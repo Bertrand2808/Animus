@@ -1,0 +1,9 @@
+/target/
+*.db
+*.db-shm
+*.db-wal
+.env
+frontend/node_modules/
+frontend/dist/
+plan.md
+tasks.todo

@@ -1,0 +1,17 @@
+[workspace]
+members = [
+    "crates/animus-core",
+    "crates/animus-db",
+    "crates/animus-llm",
+    "crates/animus-server",
+]
+resolver = "2"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+anyhow = "1"
+uuid = { version = "1", features = ["v7", "serde"] }
+tracing = "0.1"
+tokio = { version = "1.37", features = ["full"] }
