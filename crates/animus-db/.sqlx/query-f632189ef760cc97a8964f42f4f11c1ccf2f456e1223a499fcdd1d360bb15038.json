@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "\n      SELECT\n        id          AS \"id!\",\n        name        AS \"name!\",\n        description AS \"description!\",\n        personality AS \"personality!\",\n        scenario    AS \"scenario!\",\n        first_message  AS \"first_message!\",\n        message_example AS \"message_example!\",\n        avatar_url,\n        background_url,\n        content_rating AS \"content_rating!\",\n        model,\n        raw_card    AS \"raw_card!\"\n      FROM personas WHERE id = ?\n      ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "name!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "description!",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "personality!",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "scenario!",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "first_message!",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "message_example!",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "avatar_url",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "background_url",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "content_rating!",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "model",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "raw_card!",
+        "ordinal": 11,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "f632189ef760cc97a8964f42f4f11c1ccf2f456e1223a499fcdd1d360bb15038"
+}

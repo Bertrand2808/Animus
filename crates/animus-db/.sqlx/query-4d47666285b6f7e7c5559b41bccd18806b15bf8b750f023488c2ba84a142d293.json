@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n      INSERT INTO personas (\n        id, name, description, personality, scenario, first_message,\n        message_example, avatar_url, background_url, content_rating, model,\n        raw_card, created_at\n      )\n      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch())\n      ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 12
+    },
+    "nullable": []
+  },
+  "hash": "4d47666285b6f7e7c5559b41bccd18806b15bf8b750f023488c2ba84a142d293"
+}

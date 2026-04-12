@@ -26,14 +26,15 @@ impl FromStr for ContentRating {
     }
 }
 
-// TODO: Implémenter Display pour ContentRating
-// - Permet d'afficher facilement le rating de façon lisible pour l'utilisateur
-//   (ex: dans la liste des personnages sur React, les warnings NSFW, les tooltips, les filtres...)
-// - Utile dans les logs du backend Rust ("Character 'Waifu X' loaded with rating: {}")
-// - On pourra faire `format!("{}", rating)` ou `rating.to_string()` partout sans boilerplate
-// - Plus propre et plus "Rust idiomatique" que de dépendre uniquement de serde (qui donne du lowercase)
-// - Ça rendra le frontend React plus simple : on pourra renvoyer une string propre depuis l'API
-//   au lieu de mapper manuellement les valeurs.
+impl std::fmt::Display for ContentRating {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Pg     => write!(f, "pg"),
+            Self::Mature => write!(f, "mature"),
+            Self::Nsfw   => write!(f, "nsfw"),
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

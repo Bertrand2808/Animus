@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                id                  AS \"id!\",\n                conversation_id     AS \"conversation_id!\",\n                content             AS \"content!\",\n                message_range_start AS \"message_range_start!\",\n                message_range_end   AS \"message_range_end!\"\n            FROM summaries\n            WHERE conversation_id = ?\n            ORDER BY created_at DESC\n            LIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "conversation_id!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "content!",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "message_range_start!",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "message_range_end!",
+        "ordinal": 4,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ed8f4f1ce7a4104688edd6a4ca5fea5d4623147ccd41d26e15b06c2a4c290e00"
+}

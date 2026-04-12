@@ -4,3 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+animus-core = { path = "../animus-core" }
+sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio-native-tls", "uuid", "migrate"] }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
