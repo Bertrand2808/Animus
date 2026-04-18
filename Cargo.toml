@@ -15,3 +15,4 @@ anyhow = "1.0.102"
 uuid = { version = "1.23.0", features = ["v7", "serde"] }
 tracing = "0.1.44"
 tokio = { version = "1.51.1", features = ["full"] }
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio-native-tls", "uuid", "migrate"] }

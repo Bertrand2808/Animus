@@ -1,6 +1,15 @@
 [package]
 name = "animus-server"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
+animus-core = { path = "../animus-core" }
+animus-db = { path = "../animus-db" }
+axum = { version = "0.7" }
+dotenvy = "0.15"
+sqlx = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = { workspace = true }
