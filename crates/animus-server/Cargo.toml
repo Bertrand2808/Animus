@@ -8,8 +8,14 @@ animus-core = { path = "../animus-core" }
 animus-db = { path = "../animus-db" }
 axum = { version = "0.7" }
 dotenvy = "0.15"
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
 sqlx = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = { workspace = true }
+
+[dev-dependencies]
+tower = { version = "0.4", features = ["util"] }

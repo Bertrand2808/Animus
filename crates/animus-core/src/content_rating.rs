@@ -1,7 +1,7 @@
 use std::str::FromStr;
 use thiserror::Error;
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ContentRating {
     Pg,
@@ -23,6 +23,13 @@ impl FromStr for ContentRating {
             "nsfw" => Ok(Self::Nsfw),
             other => Err(ContentRatingParseError(other.to_owned()))
         }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ContentRating {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        s.parse().map_err(serde::de::Error::custom)
     }
 }
 
