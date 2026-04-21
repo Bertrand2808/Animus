@@ -11,7 +11,7 @@ impl ConversationRepo {
     Self { pool }
   }
 
-  async fn insert(&self, conv: &Conversation) -> Result<(), sqlx::Error> {
+  pub async fn insert(&self, conv: &Conversation) -> Result<(), sqlx::Error> {
     let id = conv.id.to_string();
     let persona_id = conv.persona_id.to_string();
     sqlx::query!(
@@ -27,7 +27,7 @@ impl ConversationRepo {
     Ok(())
   }
 
-  async fn find_by_id(&self, id: Uuid) -> Result<Option<Conversation>, sqlx::Error> {
+  pub async fn find_by_id(&self, id: Uuid) -> Result<Option<Conversation>, sqlx::Error> {
     let id_string = id.to_string();
     let row = sqlx::query!(
       r#"SELECT id, persona_id, created_at FROM conversations WHERE id = ?"#,
