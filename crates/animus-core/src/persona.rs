@@ -72,6 +72,7 @@ pub struct Message {
 pub struct Conversation {
   pub id: Uuid,
   pub persona_id: Uuid,
+  pub created_at: i64,
 }
 
 #[cfg(test)]
