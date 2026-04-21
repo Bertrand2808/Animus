@@ -1,0 +1,7 @@
+name: Animus
+color: "#edbd77"
+variables:
+  - name: BASE_URL
+    value: http://localhost:8082
+  - name: TEST_UUID
+    value: 019da5ff-7337-7263-a8ed-5f881815067a

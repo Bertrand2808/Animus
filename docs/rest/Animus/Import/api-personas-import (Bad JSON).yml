@@ -1,0 +1,18 @@
+info:
+  name: api/personas/import (Bad JSON)
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{BASE_URL}}/api/personas/import"
+  body:
+    type: json
+    data: '{"data": "json incorrect"'
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

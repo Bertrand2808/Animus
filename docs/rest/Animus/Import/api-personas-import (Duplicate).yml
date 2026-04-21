@@ -1,0 +1,23 @@
+info:
+  name: api/personas/import (Duplicate)
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: "{{BASE_URL}}/api/personas/import"
+  body:
+    type: json
+    data: |-
+      {
+        "spec": "chara_card_v2",
+        "spec_version": "2.0",
+        "data": { "name": "Aria", "first_mes": "Hello! Bienvenue." }
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

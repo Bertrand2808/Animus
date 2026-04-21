@@ -1,0 +1,15 @@
+info:
+  name: api/personas/:id (Not found)
+  type: http
+  seq: 2
+
+http:
+  method: DELETE
+  url: "{{BASE_URL}}/api/personas/11111111111111111111111111111111"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

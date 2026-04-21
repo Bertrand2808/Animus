@@ -1,0 +1,27 @@
+info:
+  name: api/personas (Duplicate)
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: "{{BASE_URL}}/api/personas"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Bob",
+        "description": "Un chat philosophe",
+        "personality": "Calme et introspectif",
+        "scenario": "Le salon sous la pluie",
+        "first_message": "Miaou... Quel sens à tout ça?",
+        "message_example": "Le temps passe, le temps passe...",
+        "content_rating": "pg"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
