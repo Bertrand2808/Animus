@@ -44,6 +44,11 @@ dependencies = [
 [[package]]
 name = "animus-llm"
 version = "0.1.0"
+dependencies = [
+ "animus-core",
+ "serde",
+ "uuid",
+]
 
 [[package]]
 name = "animus-server"

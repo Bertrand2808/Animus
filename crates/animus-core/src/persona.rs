@@ -1,3 +1,5 @@
+use core::fmt;
+
 use uuid::Uuid;
 use crate::{ContentRating, CharacterCardV2};
 
@@ -57,6 +59,16 @@ pub enum Role {
   User,
   Assistant,
   System,
+}
+
+impl fmt::Display for Role {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Role::User => write!(f, "user"),
+            Role::Assistant => write!(f, "assistant"),
+            Role::System => write!(f, "system"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
