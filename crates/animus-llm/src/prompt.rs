@@ -28,6 +28,21 @@ impl OllamaMessage {
 
 }
 
+// TODO : Add tests for edge cases: empty messages, single message with summary, message count ≤10.
+/*
+Risk Assessment
+  - CC=6: Moderate complexity (if/match statements for optional summary, first message checks).
+  - Coverage=89.3%: Strong test coverage. 3 of 28 lines lack execution (likely edge cases or unused branches).
+  - CRAP=6.04: Just above safe zone (≤5). Low risk, but watch for untested branches.
+---
+What's Not Covered?
+
+  Based on line ranges (31–88):
+  - Lines 69–78: History windowing logic (skip/slice calculations) appears fully covered by test 2 (12-message
+  scenario).
+  - Likely uncovered: Edge cases in skip logic for boundary message counts, or conditional branches in optional
+  summary/first_message blocks.
+*/
 pub fn build_prompt(
   persona: &Persona,
   messages: &[Message],
@@ -107,7 +122,7 @@ mod tests {
   use uuid::Uuid;
 
   fn create_test_persona() -> Persona {
-    let persona = Persona {
+    Persona {
       id: Uuid::now_v7(),
       name: "TestPersona".to_string(),
       description: "Test description".to_string(),
@@ -120,8 +135,7 @@ mod tests {
       content_rating: ContentRating::Pg,
       model: Some("Test".to_string()),
       raw_card: Some("Test".to_string()),
-    };
-    persona
+    }
   }
 
   fn create_test_message(role: Role, content: &str) -> Message {
@@ -186,9 +200,8 @@ mod tests {
     assert_eq!(history[9].content, "Message 12");
 
     // vérifier l'ordre chronologique
-    for i in 0..9 {
-      // les rôles doivent alterner
-      assert_eq!(history[i].role, if i % 2 == 0 {Role::Assistant.to_string()} else {Role::User.to_string()});
+    for (i, msg) in history.iter().enumerate() {
+      assert_eq!(msg.role, if i % 2 == 0 { Role::Assistant.to_string() } else { Role::User.to_string() });
     }
   }
 
