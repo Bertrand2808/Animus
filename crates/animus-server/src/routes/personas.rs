@@ -1,3 +1,5 @@
+use animus_core::{CardImportError, CharacterCardV2, ContentRating, Persona};
+use animus_db::persona_repo::RepoError;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -5,8 +7,6 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use animus_core::{CardImportError, CharacterCardV2, ContentRating, Persona};
-use animus_db::persona_repo::RepoError;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -25,8 +25,8 @@ async fn import_persona(
     State(state): State<AppState>,
     body: axum::body::Bytes,
 ) -> Result<impl IntoResponse, ApiError> {
-    let card: CharacterCardV2 = serde_json::from_slice(&body)
-        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    let card: CharacterCardV2 =
+        serde_json::from_slice(&body).map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
     let persona = Persona::try_from(card).map_err(|e| match e {
         CardImportError::InvalidSpec(s) => {
@@ -36,9 +36,9 @@ async fn import_persona(
     })?;
 
     state.personas.insert(&persona).await.map_err(|e| match e {
-        RepoError::Duplicate => ApiError::Conflict(
-            "a persona with this name already exists".to_owned(),
-        ),
+        RepoError::Duplicate => {
+            ApiError::Conflict("a persona with this name already exists".to_owned())
+        }
         RepoError::Db(_) => ApiError::Internal,
     })?;
 
@@ -69,9 +69,7 @@ async fn create_persona(
     Json(req): Json<CreatePersonaRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     if req.name.trim().is_empty() {
-        return Err(ApiError::UnprocessableEntity(
-            "name is required".to_owned(),
-        ));
+        return Err(ApiError::UnprocessableEntity("name is required".to_owned()));
     }
 
     let persona = Persona {
@@ -90,9 +88,9 @@ async fn create_persona(
     };
 
     state.personas.insert(&persona).await.map_err(|e| match e {
-        RepoError::Duplicate => ApiError::Conflict(
-            "a persona with this name already exists".to_owned(),
-        ),
+        RepoError::Duplicate => {
+            ApiError::Conflict("a persona with this name already exists".to_owned())
+        }
         RepoError::Db(_) => ApiError::Internal,
     })?;
 
@@ -116,7 +114,12 @@ async fn list_personas(
         .await
         .map_err(|_| ApiError::Internal)?;
 
-    Ok(Json(personas.into_iter().map(PersonaResponse::from).collect::<Vec<_>>()))
+    Ok(Json(
+        personas
+            .into_iter()
+            .map(PersonaResponse::from)
+            .collect::<Vec<_>>(),
+    ))
 }
 
 // --- Get by ID ---
@@ -192,17 +195,18 @@ impl From<Persona> for PersonaResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use animus_db::persona_repo::PersonaRepo;
+    use animus_db::{persona_repo::PersonaRepo, ConversationRepo, MessageRepo};
     use axum::{body::to_bytes, http::Request};
     use sqlx::SqlitePool;
     use tower::ServiceExt;
 
-    static MIGRATOR: sqlx::migrate::Migrator =
-        sqlx::migrate!("../animus-db/migrations");
+    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../animus-db/migrations");
 
     fn make_app(pool: SqlitePool) -> Router {
         let state = AppState {
-            personas: PersonaRepo::new(pool),
+            personas: PersonaRepo::new(pool.clone()),
+            conversations: ConversationRepo::new(pool.clone()),
+            messages: MessageRepo::new(pool),
         };
         router().with_state(state)
     }
@@ -353,7 +357,12 @@ mod tests {
     async fn list_empty_returns_empty_array(pool: SqlitePool) {
         let app = make_app(pool);
         let res = app
-            .oneshot(Request::builder().uri("/api/personas").body(axum::body::Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/personas")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::OK);
@@ -383,7 +392,12 @@ mod tests {
         }
         let app = make_app(pool);
         let res = app
-            .oneshot(Request::builder().uri("/api/personas").body(axum::body::Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/personas")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         let body = body_json(res).await;
@@ -393,13 +407,44 @@ mod tests {
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn list_filtered_by_content_rating(pool: SqlitePool) {
         let repo = PersonaRepo::new(pool.clone());
-        let pg = Persona { id: Uuid::now_v7(), name: "PG".into(), description: String::new(), personality: String::new(), scenario: String::new(), first_message: String::new(), message_example: String::new(), avatar_url: None, background_url: None, content_rating: ContentRating::Pg, model: None, raw_card: None };
-        let nsfw = Persona { id: Uuid::now_v7(), name: "NSFW".into(), description: String::new(), personality: String::new(), scenario: String::new(), first_message: String::new(), message_example: String::new(), avatar_url: None, background_url: None, content_rating: ContentRating::Nsfw, model: None, raw_card: None };
+        let pg = Persona {
+            id: Uuid::now_v7(),
+            name: "PG".into(),
+            description: String::new(),
+            personality: String::new(),
+            scenario: String::new(),
+            first_message: String::new(),
+            message_example: String::new(),
+            avatar_url: None,
+            background_url: None,
+            content_rating: ContentRating::Pg,
+            model: None,
+            raw_card: None,
+        };
+        let nsfw = Persona {
+            id: Uuid::now_v7(),
+            name: "NSFW".into(),
+            description: String::new(),
+            personality: String::new(),
+            scenario: String::new(),
+            first_message: String::new(),
+            message_example: String::new(),
+            avatar_url: None,
+            background_url: None,
+            content_rating: ContentRating::Nsfw,
+            model: None,
+            raw_card: None,
+        };
         repo.insert(&pg).await.unwrap();
         repo.insert(&nsfw).await.unwrap();
         let app = make_app(pool);
         let res = app
-            .oneshot(Request::builder().uri("/api/personas?content_rating=nsfw").body(axum::body::Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/personas?content_rating=nsfw")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         let body = body_json(res).await;
@@ -413,11 +458,29 @@ mod tests {
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn get_existing_persona(pool: SqlitePool) {
         let repo = PersonaRepo::new(pool.clone());
-        let p = Persona { id: Uuid::now_v7(), name: "Aria".into(), description: String::new(), personality: String::new(), scenario: String::new(), first_message: String::new(), message_example: String::new(), avatar_url: None, background_url: None, content_rating: ContentRating::Pg, model: None, raw_card: None };
+        let p = Persona {
+            id: Uuid::now_v7(),
+            name: "Aria".into(),
+            description: String::new(),
+            personality: String::new(),
+            scenario: String::new(),
+            first_message: String::new(),
+            message_example: String::new(),
+            avatar_url: None,
+            background_url: None,
+            content_rating: ContentRating::Pg,
+            model: None,
+            raw_card: None,
+        };
         repo.insert(&p).await.unwrap();
         let app = make_app(pool);
         let res = app
-            .oneshot(Request::builder().uri(format!("/api/personas/{}", p.id)).body(axum::body::Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/personas/{}", p.id))
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::OK);
@@ -429,7 +492,12 @@ mod tests {
     async fn get_not_found_returns_404(pool: SqlitePool) {
         let app = make_app(pool);
         let res = app
-            .oneshot(Request::builder().uri(format!("/api/personas/{}", Uuid::now_v7())).body(axum::body::Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/personas/{}", Uuid::now_v7()))
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
@@ -440,11 +508,30 @@ mod tests {
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn delete_existing_returns_204(pool: SqlitePool) {
         let repo = PersonaRepo::new(pool.clone());
-        let p = Persona { id: Uuid::now_v7(), name: "ToDelete".into(), description: String::new(), personality: String::new(), scenario: String::new(), first_message: String::new(), message_example: String::new(), avatar_url: None, background_url: None, content_rating: ContentRating::Pg, model: None, raw_card: None };
+        let p = Persona {
+            id: Uuid::now_v7(),
+            name: "ToDelete".into(),
+            description: String::new(),
+            personality: String::new(),
+            scenario: String::new(),
+            first_message: String::new(),
+            message_example: String::new(),
+            avatar_url: None,
+            background_url: None,
+            content_rating: ContentRating::Pg,
+            model: None,
+            raw_card: None,
+        };
         repo.insert(&p).await.unwrap();
         let app = make_app(pool);
         let res = app
-            .oneshot(Request::builder().method("DELETE").uri(format!("/api/personas/{}", p.id)).body(axum::body::Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/api/personas/{}", p.id))
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::NO_CONTENT);
@@ -454,7 +541,13 @@ mod tests {
     async fn delete_not_found_returns_404(pool: SqlitePool) {
         let app = make_app(pool);
         let res = app
-            .oneshot(Request::builder().method("DELETE").uri(format!("/api/personas/{}", Uuid::now_v7())).body(axum::body::Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/api/personas/{}", Uuid::now_v7()))
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::NOT_FOUND);

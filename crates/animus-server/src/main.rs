@@ -2,8 +2,8 @@ mod error;
 mod routes;
 mod state;
 
+use animus_db::{persona_repo::PersonaRepo, ConversationRepo, MessageRepo};
 use anyhow::Context;
-use animus_db::persona_repo::PersonaRepo;
 use sqlx::sqlite::SqliteConnectOptions;
 use std::str::FromStr;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -30,10 +30,14 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("database ready");
 
     let app_state = state::AppState {
-        personas: PersonaRepo::new(pool),
+        personas: PersonaRepo::new(pool.clone()),
+        conversations: ConversationRepo::new(pool.clone()),
+        messages: MessageRepo::new(pool),
     };
 
-    let app = routes::personas::router().with_state(app_state);
+    let app = routes::personas::router()
+        .merge(routes::conversations::router())
+        .with_state(app_state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8082").await?;
     tracing::info!("listening on {}", listener.local_addr()?);

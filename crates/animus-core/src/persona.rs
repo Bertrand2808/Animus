@@ -1,22 +1,22 @@
 use core::fmt;
 
+use crate::{CharacterCardV2, ContentRating};
 use uuid::Uuid;
-use crate::{ContentRating, CharacterCardV2};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Persona {
-  pub id: Uuid,
-  pub name: String,
-  pub description: String,
-  pub personality: String,
-  pub scenario: String,
-  pub first_message: String,
-  pub message_example: String,
-  pub avatar_url: Option<String>,
-  pub background_url: Option<String>,
-  pub content_rating: ContentRating,
-  pub model: Option<String>,
-  pub raw_card: Option<String>,
+    pub id: Uuid,
+    pub name: String,
+    pub description: String,
+    pub personality: String,
+    pub scenario: String,
+    pub first_message: String,
+    pub message_example: String,
+    pub avatar_url: Option<String>,
+    pub background_url: Option<String>,
+    pub content_rating: ContentRating,
+    pub model: Option<String>,
+    pub raw_card: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -56,9 +56,9 @@ impl TryFrom<CharacterCardV2> for Persona {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
-  User,
-  Assistant,
-  System,
+    User,
+    Assistant,
+    System,
 }
 
 impl fmt::Display for Role {
@@ -73,18 +73,18 @@ impl fmt::Display for Role {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Message {
-  pub id: Uuid,
-  pub conversation_id: Uuid,
-  pub role: Role,
-  pub content: String,
-  pub token_count: Option<i64>,
+    pub id: Uuid,
+    pub conversation_id: Uuid,
+    pub role: Role,
+    pub content: String,
+    pub token_count: Option<i64>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Conversation {
-  pub id: Uuid,
-  pub persona_id: Uuid,
-  pub created_at: i64,
+    pub id: Uuid,
+    pub persona_id: Uuid,
+    pub created_at: i64,
 }
 
 #[cfg(test)]
@@ -147,9 +147,9 @@ mod tests {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Summary {
-  pub id: Uuid,
-  pub conversation_id: Uuid,
-  pub content: String,
-  pub message_range_start: Uuid,
-  pub message_range_end: Uuid,
+    pub id: Uuid,
+    pub conversation_id: Uuid,
+    pub content: String,
+    pub message_range_start: Uuid,
+    pub message_range_end: Uuid,
 }

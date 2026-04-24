@@ -12,10 +12,7 @@ impl SummaryRepo {
         Self { pool }
     }
 
-    pub async fn find_latest(
-        &self,
-        conversation_id: Uuid,
-    ) -> Result<Option<Summary>, sqlx::Error> {
+    pub async fn find_latest(&self, conversation_id: Uuid) -> Result<Option<Summary>, sqlx::Error> {
         let id_str = conversation_id.to_string();
         let row = sqlx::query!(
             r#"

@@ -20,7 +20,10 @@ impl IntoResponse for ApiError {
             Self::UnprocessableEntity(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg),
             Self::Conflict(msg) => (StatusCode::CONFLICT, msg),
             Self::NotFound => (StatusCode::NOT_FOUND, "not found".to_owned()),
-            Self::Internal => (StatusCode::INTERNAL_SERVER_ERROR, "internal server error".to_owned()),
+            Self::Internal => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal server error".to_owned(),
+            ),
         };
         (status, Json(json!({ "error": message }))).into_response()
     }

@@ -2,6 +2,7 @@ use animus_core::persona::{Message, Role};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub struct MessageRepo {
     pool: SqlitePool,
 }
@@ -84,9 +85,7 @@ fn role_to_str(role: &Role) -> &'static str {
     }
 }
 
-fn str_to_role(
-    s: &str,
-) -> Result<Role, Box<dyn std::error::Error + Send + Sync>> {
+fn str_to_role(s: &str) -> Result<Role, Box<dyn std::error::Error + Send + Sync>> {
     match s {
         "user" => Ok(Role::User),
         "assistant" => Ok(Role::Assistant),
@@ -98,8 +97,10 @@ fn str_to_role(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        ContentRating, Persona, conversation_repo::ConversationRepo, persona_repo::PersonaRepo,
+    };
     use animus_core::persona::Conversation;
-    use crate::{conversation_repo::ConversationRepo, persona_repo::PersonaRepo, ContentRating, Persona};
     use sqlx::SqlitePool;
 
     async fn seed_conversation(pool: &SqlitePool) -> Uuid {
@@ -117,10 +118,20 @@ mod tests {
             model: None,
             raw_card: Some("{}".to_string()),
         };
-        PersonaRepo::new(pool.clone()).insert(&persona).await.unwrap();
+        PersonaRepo::new(pool.clone())
+            .insert(&persona)
+            .await
+            .unwrap();
 
-        let conv = Conversation { id: Uuid::now_v7(), persona_id: persona.id, created_at: 0 };
-        ConversationRepo::new(pool.clone()).insert(&conv).await.unwrap();
+        let conv = Conversation {
+            id: Uuid::now_v7(),
+            persona_id: persona.id,
+            created_at: 0,
+        };
+        ConversationRepo::new(pool.clone())
+            .insert(&conv)
+            .await
+            .unwrap();
         conv.id
     }
 
@@ -140,7 +151,9 @@ mod tests {
         let repo = MessageRepo::new(pool);
 
         for _ in 0..15 {
-            repo.insert(&make_message(conv_id, Role::User)).await.unwrap();
+            repo.insert(&make_message(conv_id, Role::User))
+                .await
+                .unwrap();
         }
 
         let messages = repo.find_last_n(conv_id, 10).await.unwrap();

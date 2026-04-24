@@ -48,7 +48,8 @@ impl OllamaClient {
             "stream": false,
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/api/generate", self.base_url))
             .timeout(Duration::from_secs(30))
             .json(&request_body)
@@ -57,12 +58,15 @@ impl OllamaClient {
             .map_err(OllamaError::Network)?;
 
         if !response.status().is_success() {
-            return Err(OllamaError::Model(
-                format!("Ollama returned {}", response.status())
-            ));
+            return Err(OllamaError::Model(format!(
+                "Ollama returned {}",
+                response.status()
+            )));
         }
 
-        let body = response.text().await
+        let body = response
+            .text()
+            .await
             .map_err(|_| OllamaError::Parse("Failed to read response body".to_string()))?;
 
         let parsed: OllamaResponse = serde_json::from_str(&body)
@@ -103,7 +107,8 @@ impl std::fmt::Display for OllamaError {
 impl std::error::Error for OllamaError {}
 
 fn messages_to_prompt(messages: &[OllamaMessage]) -> String {
-    messages.iter()
+    messages
+        .iter()
         .map(|msg| format!("{}:\n{}", msg.role.to_uppercase(), msg.content))
         .collect::<Vec<_>>()
         .join("\n\n")
@@ -111,42 +116,42 @@ fn messages_to_prompt(messages: &[OllamaMessage]) -> String {
 
 #[cfg(test)]
 mod tests {
-  use crate::OllamaMessage;
-  use super::*;
+    use super::*;
+    use crate::OllamaMessage;
 
-  // Test 1 : création client (pas de I/O)
-  #[test]
-  fn new_with_base_url() {
-    let _client = OllamaClient::new("http://localhost:11434");
-    // juste vérifier que we can construct
-    // (méthode complete() sera tokio::test donc test() suffit ici)
-  }
+    // Test 1 : création client (pas de I/O)
+    #[test]
+    fn new_with_base_url() {
+        let _client = OllamaClient::new("http://localhost:11434");
+        // juste vérifier que we can construct
+        // (méthode complete() sera tokio::test donc test() suffit ici)
+    }
 
-  // Test 2 : complete() retourne non vide si Ollama répond
-  // REQUIRE OLLAMA RUNNING
-  #[tokio::test]
-  #[ignore] // CI skip -> run en local avec : cargo test -- --ignored
-  async fn complete_returns_non_empty_string() {
-      let client = OllamaClient::new("http://localhost:11434");
-      let messages = vec![
-          OllamaMessage { role: "user".to_string(), content: "Hi".to_string() }
-      ];
+    // Test 2 : complete() retourne non vide si Ollama répond
+    // REQUIRE OLLAMA RUNNING
+    #[tokio::test]
+    #[ignore] // CI skip -> run en local avec : cargo test -- --ignored
+    async fn complete_returns_non_empty_string() {
+        let client = OllamaClient::new("http://localhost:11434");
+        let messages = vec![OllamaMessage {
+            role: "user".to_string(),
+            content: "Hi".to_string(),
+        }];
 
-      match client.complete("mistral", messages).await {
-          Ok(response) => {
-              assert!(!response.is_empty());
-              // Ne pas vérifier contenu exact (LLM aléatoire)
-          }
-          Err(OllamaError::Network(_)) => {
-              // Si CI ou Ollama down → skip silencieusement
-              eprintln!("Ollama not running, skipping");
-          }
-          Err(e) => panic!("Unexpected error: {:?}", e),
-      }
-  }
+        match client.complete("mistral", messages).await {
+            Ok(response) => {
+                assert!(!response.is_empty());
+                // Ne pas vérifier contenu exact (LLM aléatoire)
+            }
+            Err(OllamaError::Network(_)) => {
+                // Si CI ou Ollama down → skip silencieusement
+                eprintln!("Ollama not running, skipping");
+            }
+            Err(e) => panic!("Unexpected error: {:?}", e),
+        }
+    }
 
-  // Test 3 : erreur parsing (mock)
-  // Si on peut mocker reqwest → vérifier OllamaError::Parse
-  // Sinon → passer (complexe en Rust)
-
+    // Test 3 : erreur parsing (mock)
+    // Si on peut mocker reqwest → vérifier OllamaError::Parse
+    // Sinon → passer (complexe en Rust)
 }

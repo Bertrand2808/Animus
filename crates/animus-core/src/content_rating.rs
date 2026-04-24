@@ -6,7 +6,7 @@ use thiserror::Error;
 pub enum ContentRating {
     Pg,
     Mature,
-    Nsfw
+    Nsfw,
 }
 
 #[derive(Debug, Error)]
@@ -21,7 +21,7 @@ impl FromStr for ContentRating {
             "pg" => Ok(Self::Pg),
             "mature" => Ok(Self::Mature),
             "nsfw" => Ok(Self::Nsfw),
-            other => Err(ContentRatingParseError(other.to_owned()))
+            other => Err(ContentRatingParseError(other.to_owned())),
         }
     }
 }
@@ -36,9 +36,9 @@ impl<'de> serde::Deserialize<'de> for ContentRating {
 impl std::fmt::Display for ContentRating {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Pg     => write!(f, "pg"),
+            Self::Pg => write!(f, "pg"),
             Self::Mature => write!(f, "mature"),
-            Self::Nsfw   => write!(f, "nsfw"),
+            Self::Nsfw => write!(f, "nsfw"),
         }
     }
 }
