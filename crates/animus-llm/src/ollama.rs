@@ -138,7 +138,7 @@ mod tests {
             content: "Hi".to_string(),
         }];
 
-        match client.complete("mistral", messages).await {
+        match client.complete("gemma4", messages).await {
             Ok(response) => {
                 assert!(!response.is_empty());
                 // Ne pas vérifier contenu exact (LLM aléatoire)

@@ -59,6 +59,7 @@ version = "0.1.0"
 dependencies = [
  "animus-core",
  "animus-db",
+ "animus-llm",
  "anyhow",
  "axum",
  "dotenvy",

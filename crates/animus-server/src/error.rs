@@ -11,6 +11,8 @@ pub enum ApiError {
     Conflict(String),
     NotFound,
     Internal,
+    ServiceUnavailable,
+    BadGateway,
 }
 
 impl IntoResponse for ApiError {
@@ -23,6 +25,11 @@ impl IntoResponse for ApiError {
             Self::Internal => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal server error".to_owned(),
+            ),
+            Self::BadGateway => (StatusCode::BAD_GATEWAY, "Bad gateway".to_owned()),
+            Self::ServiceUnavailable => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Service unavailable".to_owned(),
             ),
         };
         (status, Json(json!({ "error": message }))).into_response()

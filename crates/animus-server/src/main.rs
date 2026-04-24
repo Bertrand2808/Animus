@@ -2,7 +2,10 @@ mod error;
 mod routes;
 mod state;
 
-use animus_db::{persona_repo::PersonaRepo, ConversationRepo, MessageRepo};
+use animus_db::{
+    persona_repo::PersonaRepo, summary_repo::SummaryRepo, ConversationRepo, MessageRepo,
+};
+use animus_llm::ollama::OllamaClient;
 use anyhow::Context;
 use sqlx::sqlite::SqliteConnectOptions;
 use std::str::FromStr;
@@ -29,10 +32,14 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("database ready");
 
+    let ollama_url =
+        std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_owned());
     let app_state = state::AppState {
         personas: PersonaRepo::new(pool.clone()),
         conversations: ConversationRepo::new(pool.clone()),
-        messages: MessageRepo::new(pool),
+        messages: MessageRepo::new(pool.clone()),
+        summaries: SummaryRepo::new(pool),
+        ollama: OllamaClient::new(ollama_url),
     };
 
     let app = routes::personas::router()

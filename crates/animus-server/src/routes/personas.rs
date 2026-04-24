@@ -195,7 +195,10 @@ impl From<Persona> for PersonaResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use animus_db::{persona_repo::PersonaRepo, ConversationRepo, MessageRepo};
+    use animus_db::{
+        persona_repo::PersonaRepo, summary_repo::SummaryRepo, ConversationRepo, MessageRepo,
+    };
+    use animus_llm::ollama::OllamaClient;
     use axum::{body::to_bytes, http::Request};
     use sqlx::SqlitePool;
     use tower::ServiceExt;
@@ -206,7 +209,9 @@ mod tests {
         let state = AppState {
             personas: PersonaRepo::new(pool.clone()),
             conversations: ConversationRepo::new(pool.clone()),
-            messages: MessageRepo::new(pool),
+            messages: MessageRepo::new(pool.clone()),
+            summaries: SummaryRepo::new(pool),
+            ollama: OllamaClient::new("http://localhost:11434"),
         };
         router().with_state(state)
     }
