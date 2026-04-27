@@ -1,13 +1,13 @@
 use animus_core::persona::{Conversation, Message, Role};
 use animus_llm::{build_prompt, ollama::StreamChunk, OllamaError};
 use axum::response::sse::{Event as SseEvent, Sse};
-use futures::StreamExt;
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json, Router,
 };
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -111,23 +111,15 @@ async fn create_conversation(
     };
 
     // 5. Persister
-    state
-        .conversations
-        .insert(&conv)
-        .await
-        .map_err(|e| {
-            tracing::error!("failed to insert conversation: {:?}", e);
-            ApiError::Internal
-        })?;
+    state.conversations.insert(&conv).await.map_err(|e| {
+        tracing::error!("failed to insert conversation: {:?}", e);
+        ApiError::Internal
+    })?;
 
-    state
-        .messages
-        .insert(&msg)
-        .await
-        .map_err(|e| {
-            tracing::error!("failed to insert first message: {:?}", e);
-            ApiError::Internal
-        })?;
+    state.messages.insert(&msg).await.map_err(|e| {
+        tracing::error!("failed to insert first message: {:?}", e);
+        ApiError::Internal
+    })?;
 
     Ok((
         StatusCode::CREATED,
@@ -155,14 +147,10 @@ async fn get_conversation(
         .ok_or(ApiError::NotFound)?;
 
     // 2. Fetch Messages (derniers 50)
-    let messages = state
-        .messages
-        .find_last_n(id, 50)
-        .await
-        .map_err(|e| {
-            tracing::error!("failed to fetch messages for conversation {id}: {:?}", e);
-            ApiError::Internal
-        })?;
+    let messages = state.messages.find_last_n(id, 50).await.map_err(|e| {
+        tracing::error!("failed to fetch messages for conversation {id}: {:?}", e);
+        ApiError::Internal
+    })?;
 
     // 3. Transformer en réponse
     let message_responses = messages
@@ -201,7 +189,10 @@ async fn create_message(
         .find_by_id_with_persona(conv_id)
         .await
         .map_err(|e| {
-            tracing::error!("failed to fetch conversation {conv_id} with persona: {:?}", e);
+            tracing::error!(
+                "failed to fetch conversation {conv_id} with persona: {:?}",
+                e
+            );
             ApiError::Internal
         })?
         .ok_or(ApiError::NotFound)?;
@@ -216,24 +207,19 @@ async fn create_message(
         token_count: None,
     };
 
-    state
-        .messages
-        .insert(&user_msg)
-        .await
-        .map_err(|e| {
-            tracing::error!("failed to insert user message: {:?}", e);
-            ApiError::Internal
-        })?;
+    state.messages.insert(&user_msg).await.map_err(|e| {
+        tracing::error!("failed to insert user message: {:?}", e);
+        ApiError::Internal
+    })?;
 
     // 4. Fetch history (includes user message just inserted)
-    let history = state
-        .messages
-        .find_last_n(conv_id, 10)
-        .await
-        .map_err(|e| {
-            tracing::error!("failed to fetch history for conversation {conv_id}: {:?}", e);
-            ApiError::Internal
-        })?;
+    let history = state.messages.find_last_n(conv_id, 10).await.map_err(|e| {
+        tracing::error!(
+            "failed to fetch history for conversation {conv_id}: {:?}",
+            e
+        );
+        ApiError::Internal
+    })?;
 
     // 5. Fetch summary optional
     let summary = state.summaries.find_latest(conv_id).await.ok();
@@ -268,6 +254,10 @@ async fn create_message(
                         };
                         match state.messages.insert(&assistant_msg).await {
                             Ok(_) => {
+                                let state_for_trigger = state.clone();
+                                tokio::spawn(async move {
+                                    crate::summary_trigger::evaluate_summary_trigger(conv_id, state_for_trigger).await;
+                                });
                                 let data = serde_json::json!({"message_id": assistant_msg.id.to_string()}).to_string();
                                 yield Ok(SseEvent::default().event("done").data(data));
                             }
@@ -321,14 +311,10 @@ async fn create_message(
         token_count: None,
     };
 
-    state
-        .messages
-        .insert(&assistant_msg)
-        .await
-        .map_err(|e| {
-            tracing::error!("failed to persist assistant message: {:?}", e);
-            ApiError::Internal
-        })?;
+    state.messages.insert(&assistant_msg).await.map_err(|e| {
+        tracing::error!("failed to persist assistant message: {:?}", e);
+        ApiError::Internal
+    })?;
 
     // 9. Retourner la réponse
     Ok((

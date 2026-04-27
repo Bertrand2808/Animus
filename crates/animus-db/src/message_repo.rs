@@ -75,6 +75,42 @@ impl MessageRepo {
             })
             .collect()
     }
+
+    pub async fn find_after(
+        &self,
+        conversation_id: Uuid,
+        after_id: Uuid,
+    ) -> Result<Vec<Message>, sqlx::Error> {
+        let conv_id_str = conversation_id.to_string();
+        let after_id_str = after_id.to_string();
+
+        let rows = sqlx::query!(
+            "SELECT * FROM messages WHERE conversation_id = ? AND id > ?",
+            conv_id_str,
+            after_id_str
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter()
+            .map(|r| {
+                Ok(Message {
+                    id: r
+                        .id
+                        .expect("ID can not be null")
+                        .parse()
+                        .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+                    conversation_id: r
+                        .conversation_id
+                        .parse()
+                        .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+                    role: str_to_role(&r.role).map_err(sqlx::Error::Decode)?,
+                    content: r.content,
+                    token_count: r.token_count,
+                })
+            })
+            .collect()
+    }
 }
 
 fn role_to_str(role: &Role) -> &'static str {
@@ -189,5 +225,42 @@ mod tests {
         assert!(roles.contains(&&Role::User));
         assert!(roles.contains(&&Role::Assistant));
         assert!(roles.contains(&&Role::System));
+    }
+
+    #[sqlx::test]
+    async fn find_after(pool: SqlitePool) {
+        let conv_id = seed_conversation(&pool).await;
+        let repo = MessageRepo::new(pool);
+        let mut messages = Vec::new();
+
+        // Insert some messages for the conversation
+        for i in 0..20 {
+            let msg = make_message(conv_id, [Role::User, Role::Assistant, Role::System][i % 3]);
+            repo.insert(&msg).await.unwrap();
+            messages.push(msg);
+        }
+
+        for k in 0..15 {
+            let after_id = messages[k].id;
+            let result = repo.find_after(conv_id, after_id).await.unwrap();
+
+            let expected = &messages[k + 1..];
+            assert_eq!(
+                result.len(),
+                expected.len(),
+                "Mauvais nombre de messages après l'ID {}",
+                after_id
+            );
+
+            for (got, expected_msg) in result.iter().zip(expected.iter()) {
+                assert_eq!(got.id, expected_msg.id);
+                assert_eq!(got.content, expected_msg.content);
+                assert_eq!(got.role, expected_msg.role);
+            }
+        }
+
+        let last_id = messages.last().unwrap().id;
+        let empty = repo.find_after(conv_id, last_id).await.unwrap();
+        assert!(empty.is_empty());
     }
 }

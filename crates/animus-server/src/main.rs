@@ -1,6 +1,7 @@
 mod error;
 mod routes;
 mod state;
+mod summary_trigger;
 
 use animus_db::{
     persona_repo::PersonaRepo, summary_repo::SummaryRepo, ConversationRepo, MessageRepo,
@@ -34,8 +35,7 @@ async fn main() -> anyhow::Result<()> {
 
     let ollama_url =
         std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_owned());
-    let model_name =
-        std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "gemma4".to_owned());
+    let model_name = std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "gemma4".to_owned());
     let app_state = state::AppState {
         personas: PersonaRepo::new(pool.clone()),
         conversations: ConversationRepo::new(pool.clone()),
