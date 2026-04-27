@@ -7,6 +7,11 @@ edition = "2024"
 animus-core = { path = "../animus-core" }
 uuid = { workspace = true }
 serde = { workspace = true }
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
 serde_json = { workspace = true }
 tokio = { workspace = true }
+futures = { version = "0.3.32" }
+async-stream = { version = "0.3.6" }
+bytes-stream = "0.0.3"
+tokio-stream = { version = "0.1.18", features = ["io-util"] }
+tokio-util = "0.7.18"

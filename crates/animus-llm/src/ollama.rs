@@ -1,11 +1,24 @@
-use std::time::Duration;
-
+use crate::OllamaMessage;
+use futures::Stream;
+use futures::StreamExt;
+use futures::TryStreamExt;
 use reqwest::Client;
 use serde::Deserialize;
+use std::time::Duration;
+use tokio::io::AsyncBufReadExt;
+use tokio_util::io::StreamReader;
 
-use crate::OllamaMessage;
+/// Represents a chunk of data from the Ollama stream.
+///
+/// - `Token`: a regular token string from the model's output.
+/// - `Done`: the stream has finished, with an optional `eval_count`.
+#[derive(Debug)]
+pub enum StreamChunk {
+    Token(String),
+    Done { eval_count: u32 },
+}
 
-/// HTTP client for the Ollama `/api/generate` endpoint.
+/// HTTP client for Ollama API (`/api/generate` and `/api/chat` endpoints).
 ///
 /// Wraps `reqwest::Client` (internally `Arc`-backed — cheap to clone).
 #[derive(Clone)]
@@ -74,6 +87,49 @@ impl OllamaClient {
 
         Ok(parsed.response)
     }
+
+    pub fn stream(
+        &self,
+        model: &str,
+        messages: Vec<OllamaMessage>,
+    ) -> impl Stream<Item = Result<StreamChunk, OllamaError>> {
+        let request_body = serde_json::json!({
+            "model": model,
+            "messages": messages,
+            "stream": true,
+        });
+        let url = format!("{}/api/chat", &self.base_url);
+        let client = self.client.clone();
+        async_stream::try_stream! {
+            let response = client.post(&url)
+                .timeout(Duration::from_secs(30))
+                .json(&request_body)
+                .send()
+                .await
+                .map_err(|e| OllamaError::Network(e))?;
+
+            if !response.status().is_success() {
+                return Err(OllamaError::Model(
+                    format!("Ollama returned {}", response.status())
+                ))?;
+            }
+
+            let byte_stream = response.bytes_stream()
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+            let reader = StreamReader::new(byte_stream);
+            let mut lines_stream = tokio_stream::wrappers::LinesStream::new(reader.lines());
+            while let Some(line) = lines_stream.next().await {
+                let line = line.map_err(|e| OllamaError::Parse(e.to_string()))?;
+                let parsed = serde_json::from_str::<OllamaStreamResponse>(&line)
+                    .map_err(|e| OllamaError::Parse(e.to_string()))?;
+                if parsed.done {
+                    yield StreamChunk::Done { eval_count: parsed.eval_count.unwrap_or(0) as u32 };
+                    return ;
+                }
+                yield StreamChunk::Token(parsed.message.content);
+            }
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -81,6 +137,14 @@ struct OllamaResponse {
     response: String,
     #[allow(dead_code)]
     done: bool,
+}
+
+/// Represents a response from the Ollama API stream endpoint.
+#[derive(Deserialize)]
+struct OllamaStreamResponse {
+    message: OllamaMessage,
+    done: bool,
+    eval_count: Option<usize>,
 }
 
 /// Errors produced by [`OllamaClient::complete`].
@@ -116,6 +180,9 @@ fn messages_to_prompt(messages: &[OllamaMessage]) -> String {
 
 #[cfg(test)]
 mod tests {
+    // TODO : Error test coverage — Consider adding mock-based tests later (requires test harness) or document why real Ollama is required.
+    use futures::TryStreamExt;
+
     use super::*;
     use crate::OllamaMessage;
 
@@ -154,4 +221,34 @@ mod tests {
     // Test 3 : erreur parsing (mock)
     // Si on peut mocker reqwest → vérifier OllamaError::Parse
     // Sinon → passer (complexe en Rust)
+
+    // Test qui appelle stream() et collecte tous les tokens en une String non vide
+    #[tokio::test]
+    #[ignore = "Ollama needs to be running"]
+    async fn collect_stream_tokens() {
+        let client = OllamaClient::new("http://localhost:11434");
+        let messages = vec![OllamaMessage {
+            role: "user".to_string(),
+            content: "Hi hello".to_string(),
+        }];
+        let mut collected_tokens = String::new();
+        let mut eval_count = 0u32;
+        let model = "gemma4";
+        let stream = client.stream(model, messages);
+
+        match stream.try_collect::<Vec<_>>().await {
+            Ok(chunks) => {
+                for chunk in chunks {
+                    match chunk {
+                        StreamChunk::Token(token) => collected_tokens.push_str(&token),
+                        StreamChunk::Done { eval_count: count } => eval_count = count,
+                    }
+                }
+            }
+            Err(e) => panic!("Unexpected Stream error: {:?}", e),
+        }
+        println!("Réponse complète : {}", collected_tokens);
+        assert!(!collected_tokens.trim().is_empty());
+        println!("Eval Count : {}", eval_count);
+    }
 }
