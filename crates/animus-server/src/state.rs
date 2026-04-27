@@ -10,4 +10,5 @@ pub struct AppState {
     pub messages: MessageRepo,
     pub summaries: SummaryRepo,
     pub ollama: OllamaClient,
+    pub model_name: String,
 }

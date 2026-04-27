@@ -1,4 +1,4 @@
-use crate::Conversation;
+use crate::{ContentRating, Conversation, Persona};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
@@ -26,6 +26,70 @@ impl ConversationRepo {
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    /// Fetch a conversation and its persona in a single JOIN query.
+    pub async fn find_by_id_with_persona(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<(Conversation, Persona)>, sqlx::Error> {
+        let id_str = id.to_string();
+        let row = sqlx::query!(
+            r#"
+            SELECT
+                c.id          AS "conv_id!",
+                c.persona_id  AS "conv_persona_id!",
+                c.created_at  AS "conv_created_at!",
+                p.id          AS "p_id!",
+                p.name        AS "p_name!",
+                p.description AS "p_description!",
+                p.personality AS "p_personality!",
+                p.scenario    AS "p_scenario!",
+                p.first_message  AS "p_first_message!",
+                p.message_example AS "p_message_example!",
+                p.avatar_url,
+                p.background_url,
+                p.content_rating AS "p_content_rating!",
+                p.model,
+                p.raw_card
+            FROM conversations c
+            INNER JOIN personas p ON c.persona_id = p.id
+            WHERE c.id = ?
+            "#,
+            id_str
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        row.map(|r| {
+            let conv = Conversation {
+                id: r.conv_id.parse().map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+                persona_id: r
+                    .conv_persona_id
+                    .parse()
+                    .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+                created_at: r.conv_created_at,
+            };
+            let persona = Persona {
+                id: r.p_id.parse().map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+                name: r.p_name,
+                description: r.p_description,
+                personality: r.p_personality,
+                scenario: r.p_scenario,
+                first_message: r.p_first_message,
+                message_example: r.p_message_example,
+                avatar_url: r.avatar_url,
+                background_url: r.background_url,
+                content_rating: r
+                    .p_content_rating
+                    .parse::<ContentRating>()
+                    .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+                model: r.model,
+                raw_card: r.raw_card,
+            };
+            Ok((conv, persona))
+        })
+        .transpose()
     }
 
     pub async fn find_by_id(&self, id: Uuid) -> Result<Option<Conversation>, sqlx::Error> {

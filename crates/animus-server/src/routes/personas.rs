@@ -212,6 +212,7 @@ mod tests {
             messages: MessageRepo::new(pool.clone()),
             summaries: SummaryRepo::new(pool),
             ollama: OllamaClient::new("http://localhost:11434"),
+            model_name: "gemma4".to_owned(),
         };
         router().with_state(state)
     }

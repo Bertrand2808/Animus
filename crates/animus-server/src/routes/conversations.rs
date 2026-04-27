@@ -1,8 +1,11 @@
 use animus_core::persona::{Conversation, Message, Role};
-use animus_llm::{build_prompt, OllamaError};
+use animus_llm::{build_prompt, ollama::StreamChunk, OllamaError};
+use axum::response::sse::{Event as SseEvent, Sse};
+use futures::StreamExt;
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -94,7 +97,7 @@ async fn create_conversation(
         persona_id: persona.id,
         created_at: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("system clock is before Unix epoch")
             .as_secs() as i64,
     };
 
@@ -112,13 +115,19 @@ async fn create_conversation(
         .conversations
         .insert(&conv)
         .await
-        .map_err(|_| ApiError::Internal)?;
+        .map_err(|e| {
+            tracing::error!("failed to insert conversation: {:?}", e);
+            ApiError::Internal
+        })?;
 
     state
         .messages
         .insert(&msg)
         .await
-        .map_err(|_| ApiError::Internal)?;
+        .map_err(|e| {
+            tracing::error!("failed to insert first message: {:?}", e);
+            ApiError::Internal
+        })?;
 
     Ok((
         StatusCode::CREATED,
@@ -139,7 +148,10 @@ async fn get_conversation(
         .conversations
         .find_by_id(id)
         .await
-        .map_err(|_| ApiError::Internal)?
+        .map_err(|e| {
+            tracing::error!("failed to fetch conversation {id}: {:?}", e);
+            ApiError::Internal
+        })?
         .ok_or(ApiError::NotFound)?;
 
     // 2. Fetch Messages (derniers 50)
@@ -147,7 +159,10 @@ async fn get_conversation(
         .messages
         .find_last_n(id, 50)
         .await
-        .map_err(|_| ApiError::Internal)?;
+        .map_err(|e| {
+            tracing::error!("failed to fetch messages for conversation {id}: {:?}", e);
+            ApiError::Internal
+        })?;
 
     // 3. Transformer en réponse
     let message_responses = messages
@@ -171,25 +186,28 @@ async fn get_conversation(
 async fn create_message(
     State(state): State<AppState>,
     Path(conv_id): Path<Uuid>,
+    headers: HeaderMap,
     Json(req): Json<CreateMessageRequest>,
-) -> Result<(StatusCode, Json<MessageDetailResponse>), ApiError> {
-    // 1. Fetch conversation
-    let conv = state
+) -> Result<Response, ApiError> {
+    let stream_header = headers.get("accept");
+    let want_sse_header = stream_header
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.contains("event-stream"))
+        .unwrap_or(false);
+
+    // 1. Fetch conversation + persona in a single JOIN
+    let (_, persona) = state
         .conversations
-        .find_by_id(conv_id)
+        .find_by_id_with_persona(conv_id)
         .await
-        .map_err(|_| ApiError::Internal)?
+        .map_err(|e| {
+            tracing::error!("failed to fetch conversation {conv_id} with persona: {:?}", e);
+            ApiError::Internal
+        })?
         .ok_or(ApiError::NotFound)?;
 
-    // 2. Fetch Persona (doit exister, sinon incohérence DB)
-    let persona = state
-        .personas
-        .find_by_id(conv.persona_id)
-        .await
-        .map_err(|_| ApiError::Internal)?
-        .ok_or(ApiError::Internal)?;
-
     // 3. Persist user message before fetching history
+    // TODO(low): validate req.content — reject empty or oversized messages
     let user_msg = Message {
         id: Uuid::now_v7(),
         conversation_id: conv_id,
@@ -202,32 +220,96 @@ async fn create_message(
         .messages
         .insert(&user_msg)
         .await
-        .map_err(|_| ApiError::Internal)?;
+        .map_err(|e| {
+            tracing::error!("failed to insert user message: {:?}", e);
+            ApiError::Internal
+        })?;
 
     // 4. Fetch history (includes user message just inserted)
     let history = state
         .messages
         .find_last_n(conv_id, 10)
         .await
-        .map_err(|_| ApiError::Internal)?;
+        .map_err(|e| {
+            tracing::error!("failed to fetch history for conversation {conv_id}: {:?}", e);
+            ApiError::Internal
+        })?;
 
     // 5. Fetch summary optional
     let summary = state.summaries.find_latest(conv_id).await.ok();
 
     // 6. Build prompt
     let prompt = build_prompt(&persona, &history, summary.flatten().as_ref());
+    let model = state.model_name.clone();
 
-    // 7. Call Ollama
-    // TODO : set an env var for the default model
-    let model = persona.model.as_deref().unwrap_or("gemma4");
+    if want_sse_header {
+        // 7. Call Ollama (streaming)
+        let sse_stream = async_stream::stream! {
+            let mut full_text = String::with_capacity(2048);
+            let mut ollama_stream = Box::pin(state.ollama.stream(&model, prompt));
+            while let Some(chunk) = ollama_stream.next().await {
+                match chunk {
+                    Ok(StreamChunk::Token(token)) => {
+                        full_text.push_str(&token);
+                        let escaped = serde_json::to_string(&token)
+                            .expect("string serialization is infallible");
+                        let data = format!(r#"{{"text":{escaped}}}"#);
+                        yield Ok::<SseEvent, std::convert::Infallible>(
+                            SseEvent::default().event("token").data(data),
+                        );
+                    }
+                    Ok(StreamChunk::Done { eval_count }) => {
+                        let assistant_msg = Message {
+                            id: Uuid::now_v7(),
+                            conversation_id: conv_id,
+                            role: Role::Assistant,
+                            content: full_text.clone(),
+                            token_count: Some(eval_count as i64),
+                        };
+                        match state.messages.insert(&assistant_msg).await {
+                            Ok(_) => {
+                                let data = serde_json::json!({"message_id": assistant_msg.id.to_string()}).to_string();
+                                yield Ok(SseEvent::default().event("done").data(data));
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to persist assistant message: {:?}", e);
+                                let data = serde_json::json!({"message": "Failed to persist message"}).to_string();
+                                yield Ok(SseEvent::default().event("error").data(data));
+                            }
+                        }
+                        return;
+                    }
+                    Err(e) => {
+                        tracing::error!("Ollama stream error: {:?}", e);
+                        let data = r#"{"message":"stream error"}"#.to_owned();
+                        yield Ok(SseEvent::default().event("error").data(data));
+                        return;
+                    }
+                }
+            }
+        };
+
+        return Ok(Sse::new(sse_stream).into_response());
+    }
+
+    // 7. Call Ollama (JSON path)
     let response_text = state
         .ollama
-        .complete(model, prompt)
+        .complete(&model, prompt)
         .await
         .map_err(|e| match e {
-            OllamaError::Network(_) => ApiError::ServiceUnavailable,
-            OllamaError::Model(_) => ApiError::BadGateway,
-            OllamaError::Parse(_) => ApiError::Internal,
+            OllamaError::Network(ref err) => {
+                tracing::error!("Ollama network error: {:?}", err);
+                ApiError::ServiceUnavailable
+            }
+            OllamaError::Model(ref err) => {
+                tracing::error!("Ollama model error: {:?}", err);
+                ApiError::BadGateway
+            }
+            OllamaError::Parse(ref err) => {
+                tracing::error!("Ollama parse error: {:?}", err);
+                ApiError::Internal
+            }
         })?;
 
     // 8. Persist assistant message
@@ -243,7 +325,10 @@ async fn create_message(
         .messages
         .insert(&assistant_msg)
         .await
-        .map_err(|_| ApiError::Internal)?;
+        .map_err(|e| {
+            tracing::error!("failed to persist assistant message: {:?}", e);
+            ApiError::Internal
+        })?;
 
     // 9. Retourner la réponse
     Ok((
@@ -253,8 +338,10 @@ async fn create_message(
             role: "assistant".to_string(),
             content: response_text,
         }),
-    ))
+    )
+        .into_response())
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -279,6 +366,7 @@ mod tests {
             messages: MessageRepo::new(pool.clone()),
             summaries: SummaryRepo::new(pool),
             ollama: OllamaClient::new("http://localhost:11434"),
+            model_name: "gemma4".to_owned(),
         };
         router().with_state(state)
     }
@@ -449,6 +537,8 @@ mod tests {
         let response = app.oneshot(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
+
+    // TODO(low): add tests for Ollama timeout, persist failure, invalid conversation error paths
 
     // Skipped: setting up a conv with orphaned persona_id while FK=ON is unreliable
     // in sqlx test pools (pool resets PRAGMA foreign_keys=ON per connection).

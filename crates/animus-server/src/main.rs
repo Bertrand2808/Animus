@@ -34,12 +34,15 @@ async fn main() -> anyhow::Result<()> {
 
     let ollama_url =
         std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_owned());
+    let model_name =
+        std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "gemma4".to_owned());
     let app_state = state::AppState {
         personas: PersonaRepo::new(pool.clone()),
         conversations: ConversationRepo::new(pool.clone()),
         messages: MessageRepo::new(pool.clone()),
         summaries: SummaryRepo::new(pool),
         ollama: OllamaClient::new(ollama_url),
+        model_name,
     };
 
     let app = routes::personas::router()
