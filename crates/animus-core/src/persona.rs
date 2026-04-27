@@ -152,4 +152,5 @@ pub struct Summary {
     pub content: String,
     pub message_range_start: Uuid,
     pub message_range_end: Uuid,
+    pub created_at: i64,
 }

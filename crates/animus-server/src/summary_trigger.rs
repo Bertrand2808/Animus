@@ -88,6 +88,7 @@ pub async fn evaluate_summary_trigger(conv_id: Uuid, state: AppState) {
         content,
         message_range_start: range_start,
         message_range_end: range_end,
+        created_at: 0,
     };
 
     if let Err(e) = state.summaries.insert(&summary).await {

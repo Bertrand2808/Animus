@@ -21,7 +21,8 @@ impl SummaryRepo {
                 conversation_id     AS "conversation_id!",
                 content             AS "content!",
                 message_range_start AS "message_range_start!",
-                message_range_end   AS "message_range_end!"
+                message_range_end   AS "message_range_end!",
+                created_at          AS "created_at!"
             FROM summaries
             WHERE conversation_id = ?
             ORDER BY created_at DESC
@@ -48,6 +49,7 @@ impl SummaryRepo {
                     .message_range_end
                     .parse()
                     .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+                created_at: r.created_at,
             })
         })
         .transpose()
@@ -147,6 +149,7 @@ mod tests {
             content: "test".to_string(),
             message_range_start: Uuid::now_v7(),
             message_range_end: Uuid::now_v7(),
+            created_at: 0,
         };
         repo.insert(&summary).await.unwrap();
         let result = repo.find_latest(summary.conversation_id).await.unwrap();

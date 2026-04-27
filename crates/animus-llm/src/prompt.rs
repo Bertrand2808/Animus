@@ -248,6 +248,7 @@ mod tests {
             content: "Résumé de la conversation précédente.".to_string(),
             message_range_start: Uuid::now_v7(),
             message_range_end: Uuid::now_v7(),
+            created_at: 0,
         };
 
         let result = build_prompt(&persona, &messages, Some(&summary));
@@ -283,6 +284,7 @@ mod tests {
             content: "Ancien résumé.".to_string(),
             message_range_start: Uuid::now_v7(),
             message_range_end: Uuid::now_v7(),
+            created_at: 0,
         };
 
         let result = build_prompt(&persona, &messages, Some(&summary));
