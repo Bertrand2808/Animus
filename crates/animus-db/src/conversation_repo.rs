@@ -63,7 +63,10 @@ impl ConversationRepo {
 
         row.map(|r| {
             let conv = Conversation {
-                id: r.conv_id.parse().map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+                id: r
+                    .conv_id
+                    .parse()
+                    .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
                 persona_id: r
                     .conv_persona_id
                     .parse()
@@ -71,7 +74,10 @@ impl ConversationRepo {
                 created_at: r.conv_created_at,
             };
             let persona = Persona {
-                id: r.p_id.parse().map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+                id: r
+                    .p_id
+                    .parse()
+                    .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
                 name: r.p_name,
                 description: r.p_description,
                 personality: r.p_personality,
@@ -88,6 +94,40 @@ impl ConversationRepo {
                 raw_card: r.raw_card,
             };
             Ok((conv, persona))
+        })
+        .transpose()
+    }
+
+    pub async fn find_latest_by_persona_id(
+        &self,
+        persona_id: Uuid,
+    ) -> Result<Option<Conversation>, sqlx::Error> {
+        let persona_id_str = persona_id.to_string();
+        let row = sqlx::query!(
+            r#"
+            SELECT
+                id         AS "id!",
+                persona_id AS "persona_id!",
+                created_at AS "created_at!"
+            FROM conversations
+            WHERE persona_id = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            "#,
+            persona_id_str
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        row.map(|r| {
+            Ok(Conversation {
+                id: r.id.parse().map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+                persona_id: r
+                    .persona_id
+                    .parse()
+                    .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+                created_at: r.created_at,
+            })
         })
         .transpose()
     }

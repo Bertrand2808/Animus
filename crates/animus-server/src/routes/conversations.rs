@@ -2,7 +2,7 @@ use animus_core::persona::{Conversation, Message, Role};
 use animus_llm::{build_prompt, ollama::StreamChunk, OllamaError};
 use axum::response::sse::{Event as SseEvent, Sse};
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json, Router,
@@ -54,12 +54,29 @@ pub struct CreateMessageRequest {
     content: String,
 }
 
+#[derive(Deserialize)]
+struct GetConversationsQuery {
+    persona_id: Uuid,
+}
+
+#[derive(Serialize)]
+struct ConversationListResponse {
+    conversation: Option<ConversationSummary>,
+}
+
+#[derive(Serialize)]
+struct ConversationSummary {
+    id: String,
+    persona_id: String,
+    created_at: i64,
+}
+
 // Routes
 pub fn router() -> Router<AppState> {
     Router::new()
         .route(
             "/api/conversations",
-            axum::routing::post(create_conversation),
+            axum::routing::get(list_conversations).post(create_conversation),
         )
         .route(
             "/api/conversations/:id",
@@ -72,6 +89,28 @@ pub fn router() -> Router<AppState> {
 }
 
 // Handlers
+async fn list_conversations(
+    State(state): State<AppState>,
+    Query(q): Query<GetConversationsQuery>,
+) -> Result<Json<ConversationListResponse>, ApiError> {
+    let conv = state
+        .conversations
+        .find_latest_by_persona_id(q.persona_id)
+        .await
+        .map_err(|e| {
+            tracing::error!(persona_id = %q.persona_id, "failed to fetch latest conversation: {}", e);
+            ApiError::Internal
+        })?;
+
+    let conversation = conv.map(|c| ConversationSummary {
+        id: c.id.to_string(),
+        persona_id: c.persona_id.to_string(),
+        created_at: c.created_at,
+    });
+
+    Ok(Json(ConversationListResponse { conversation }))
+}
+
 async fn create_conversation(
     State(state): State<AppState>,
     Json(req): Json<CreateConversationRequest>,
@@ -623,5 +662,77 @@ mod tests {
         );
 
         assert_ne!(user_msg["id"].as_str(), assistant_msg["id"].as_str());
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn list_conversations_unknown_persona_returns_null(pool: SqlitePool) {
+        let app = make_app(pool);
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/conversations?persona_id=00000000-0000-0000-0000-000000000000")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = body_json(res).await;
+        assert!(body["conversation"].is_null());
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn list_conversations_persona_without_conv_returns_null(pool: SqlitePool) {
+        let persona = insert_persona(&pool, "Alice", "Hello").await;
+        let app = make_app(pool);
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/conversations?persona_id={}", persona.id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = body_json(res).await;
+        assert!(body["conversation"].is_null());
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn list_conversations_returns_latest_conversation(pool: SqlitePool) {
+        let persona = insert_persona(&pool, "Bob", "Hi").await;
+        // Create conversation via POST
+        let res = make_app(pool.clone())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/conversations")
+                    .header("content-type", "application/json")
+                    .body(Body::from(format!(r#"{{"persona_id":"{}"}}"#, persona.id)))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::CREATED);
+        let created = body_json(res).await;
+        let conv_id = created["id"].as_str().unwrap().to_owned();
+
+        let res2 = make_app(pool)
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/conversations?persona_id={}", persona.id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res2.status(), StatusCode::OK);
+        let body = body_json(res2).await;
+        let conv = &body["conversation"];
+        assert!(!conv.is_null());
+        assert_eq!(conv["id"].as_str().unwrap(), conv_id);
+        assert_eq!(conv["persona_id"].as_str().unwrap(), persona.id.to_string());
+        assert!(conv["created_at"].is_number());
     }
 }
