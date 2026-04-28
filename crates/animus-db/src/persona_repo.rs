@@ -196,6 +196,41 @@ impl PersonaRepo {
         Ok(rows)
     }
 
+    pub async fn update(&self, persona: &Persona) -> Result<bool, RepoError> {
+        tracing::debug!(target: "personas", persona_id = %persona.id, "updating persona in db");
+        let id = persona.id.to_string();
+        let content_rating = persona.content_rating.to_string();
+        let result = sqlx::query!(
+            r#"
+            UPDATE personas SET
+              name = ?, description = ?, personality = ?, scenario = ?,
+              first_message = ?, message_example = ?, avatar_url = ?,
+              background_url = ?, content_rating = ?, model = ?
+            WHERE id = ?
+            "#,
+            persona.name,
+            persona.description,
+            persona.personality,
+            persona.scenario,
+            persona.first_message,
+            persona.message_example,
+            persona.avatar_url,
+            persona.background_url,
+            content_rating,
+            persona.model,
+            id,
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::Database(ref db) if db.is_unique_violation() => RepoError::Duplicate,
+            other => other.into(),
+        })?;
+        let found = result.rows_affected() > 0;
+        tracing::debug!(target: "personas", persona_id = %persona.id, found = found, "update complete");
+        Ok(found)
+    }
+
     pub async fn delete(&self, id: Uuid) -> Result<bool, sqlx::Error> {
         let id_str = id.to_string();
         let result = sqlx::query!("DELETE FROM personas WHERE id = ?", id_str)
@@ -316,5 +351,35 @@ mod tests {
     async fn delete_not_found_returns_false(pool: SqlitePool) {
         let repo = PersonaRepo::new(pool);
         assert!(!repo.delete(Uuid::now_v7()).await.unwrap());
+    }
+
+    #[sqlx::test(migrator = "crate::persona_repo::MIGRATOR")]
+    async fn update_existing_returns_true(pool: SqlitePool) {
+        let repo = PersonaRepo::new(pool);
+        let mut p = make_persona("Aria", ContentRating::Pg);
+        repo.insert(&p).await.unwrap();
+        p.name = "Aria Renamed".to_owned();
+        assert!(repo.update(&p).await.unwrap());
+        let fetched = repo.find_by_id(p.id).await.unwrap().unwrap();
+        assert_eq!(fetched.name, "Aria Renamed");
+    }
+
+    #[sqlx::test(migrator = "crate::persona_repo::MIGRATOR")]
+    async fn update_not_found_returns_false(pool: SqlitePool) {
+        let repo = PersonaRepo::new(pool);
+        let p = make_persona("Ghost", ContentRating::Pg);
+        assert!(!repo.update(&p).await.unwrap());
+    }
+
+    #[sqlx::test(migrator = "crate::persona_repo::MIGRATOR")]
+    async fn update_duplicate_name_returns_error(pool: SqlitePool) {
+        let repo = PersonaRepo::new(pool);
+        let a = make_persona("Aria", ContentRating::Pg);
+        let mut b = make_persona("Bob", ContentRating::Pg);
+        repo.insert(&a).await.unwrap();
+        repo.insert(&b).await.unwrap();
+        b.name = "Aria".to_owned();
+        let err = repo.update(&b).await.unwrap_err();
+        assert!(matches!(err, RepoError::Duplicate));
     }
 }

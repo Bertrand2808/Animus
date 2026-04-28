@@ -7,6 +7,7 @@ import type {
   CreatePersonaRequest,
   OllamaStatus,
   Persona,
+  UpdatePersonaRequest,
 } from "../types/api";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -33,6 +34,14 @@ export function importPersona(json: string): Promise<Persona> {
 export function createPersona(req: CreatePersonaRequest): Promise<Persona> {
   return request<Persona>("/api/personas", {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+export function updatePersona(id: string, req: UpdatePersonaRequest): Promise<Persona> {
+  return request<Persona>(`/api/personas/${id}`, {
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
   });

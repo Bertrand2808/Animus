@@ -16,7 +16,10 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/personas/import", post(import_persona))
         .route("/api/personas", post(create_persona).get(list_personas))
-        .route("/api/personas/:id", get(get_persona).delete(remove_persona))
+        .route(
+            "/api/personas/:id",
+            get(get_persona).delete(remove_persona).patch(patch_persona),
+        )
 }
 
 // --- Import ---
@@ -62,6 +65,27 @@ pub struct CreatePersonaRequest {
     pub message_example: String,
     pub content_rating: Option<ContentRating>,
     pub model: Option<String>,
+    pub avatar_url: Option<String>,
+    pub background_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdatePersonaRequest {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub personality: String,
+    #[serde(default)]
+    pub scenario: String,
+    #[serde(default)]
+    pub first_message: String,
+    #[serde(default)]
+    pub message_example: String,
+    pub content_rating: Option<ContentRating>,
+    pub model: Option<String>,
+    pub avatar_url: Option<String>,
+    pub background_url: Option<String>,
 }
 
 async fn create_persona(
@@ -80,8 +104,8 @@ async fn create_persona(
         scenario: req.scenario,
         first_message: req.first_message,
         message_example: req.message_example,
-        avatar_url: None,
-        background_url: None,
+        avatar_url: req.avatar_url,
+        background_url: req.background_url,
         content_rating: req.content_rating.unwrap_or(ContentRating::Pg),
         model: req.model,
         raw_card: None,
@@ -95,6 +119,54 @@ async fn create_persona(
     })?;
 
     Ok((StatusCode::CREATED, Json(PersonaResponse::from(persona))))
+}
+
+// --- Update ---
+
+async fn patch_persona(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UpdatePersonaRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    tracing::debug!(target: "personas", persona_id = %id, "patch request received");
+
+    if req.name.trim().is_empty() {
+        return Err(ApiError::UnprocessableEntity("name is required".to_owned()));
+    }
+
+    let mut persona = state
+        .personas
+        .find_by_id(id)
+        .await
+        .map_err(|_| ApiError::Internal)?
+        .ok_or(ApiError::NotFound)?;
+
+    persona.name = req.name;
+    persona.description = req.description;
+    persona.personality = req.personality;
+    persona.scenario = req.scenario;
+    persona.first_message = req.first_message;
+    persona.message_example = req.message_example;
+    if let Some(cr) = req.content_rating {
+        persona.content_rating = cr;
+    }
+    persona.model = req.model;
+    persona.avatar_url = req.avatar_url;
+    persona.background_url = req.background_url;
+
+    state
+        .personas
+        .update(&persona)
+        .await
+        .map_err(|e| match e {
+            RepoError::Duplicate => {
+                ApiError::Conflict("a persona with this name already exists".to_owned())
+            }
+            RepoError::Db(_) => ApiError::Internal,
+        })?;
+
+    tracing::debug!(target: "personas", persona_id = %id, "patch complete");
+    Ok(Json(PersonaResponse::from(persona)))
 }
 
 // --- List ---
@@ -557,5 +629,146 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    }
+
+    // --- Patch ---
+
+    fn make_patch_body(name: &str) -> String {
+        serde_json::json!({ "name": name }).to_string()
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn patch_existing_returns_200(pool: SqlitePool) {
+        let repo = PersonaRepo::new(pool.clone());
+        let p = Persona {
+            id: Uuid::now_v7(),
+            name: "Original".into(),
+            description: String::new(),
+            personality: String::new(),
+            scenario: String::new(),
+            first_message: String::new(),
+            message_example: String::new(),
+            avatar_url: None,
+            background_url: None,
+            content_rating: ContentRating::Pg,
+            model: None,
+            raw_card: None,
+        };
+        repo.insert(&p).await.unwrap();
+        let app = make_app(pool);
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/api/personas/{}", p.id))
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(make_patch_body("Updated")))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = body_json(res).await;
+        assert_eq!(body["name"], "Updated");
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn patch_not_found_returns_404(pool: SqlitePool) {
+        let app = make_app(pool);
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/api/personas/{}", Uuid::now_v7()))
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(make_patch_body("X")))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn patch_empty_name_returns_422(pool: SqlitePool) {
+        let app = make_app(pool);
+        let body = serde_json::json!({ "name": "  " }).to_string();
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/api/personas/{}", Uuid::now_v7()))
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn patch_duplicate_name_returns_409(pool: SqlitePool) {
+        let repo = PersonaRepo::new(pool.clone());
+        for name in ["Aria", "Bob"] {
+            let p = Persona {
+                id: Uuid::now_v7(),
+                name: name.to_owned(),
+                description: String::new(),
+                personality: String::new(),
+                scenario: String::new(),
+                first_message: String::new(),
+                message_example: String::new(),
+                avatar_url: None,
+                background_url: None,
+                content_rating: ContentRating::Pg,
+                model: None,
+                raw_card: None,
+            };
+            repo.insert(&p).await.unwrap();
+        }
+        let bob_id = repo.find_all(None).await.unwrap()
+            .into_iter()
+            .find(|p| p.name == "Bob")
+            .unwrap()
+            .id;
+        let app = make_app(pool);
+        let body = serde_json::json!({ "name": "Aria" }).to_string();
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/api/personas/{}", bob_id))
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::CONFLICT);
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn create_wires_avatar_url(pool: SqlitePool) {
+        let app = make_app(pool);
+        let body = serde_json::json!({
+            "name": "WithAvatar",
+            "avatar_url": "data:image/png;base64,abc123"
+        })
+        .to_string();
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/personas")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::CREATED);
+        let body = body_json(res).await;
+        assert_eq!(body["avatar_url"], "data:image/png;base64,abc123");
     }
 }

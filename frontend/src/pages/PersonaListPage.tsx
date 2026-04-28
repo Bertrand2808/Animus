@@ -155,6 +155,7 @@ export default function PersonaListPage() {
                 <PersonaCard
                   persona={p}
                   onClick={() => void handlePersonaClick(p.id)}
+                  onEdit={() => void navigate(`/edit/${p.id}`)}
                 />
               </div>
             ))}

@@ -8,13 +8,25 @@ use animus_db::{
 };
 use animus_llm::ollama::OllamaClient;
 use anyhow::Context;
+use dirs::home_dir;
 use sqlx::sqlite::SqliteConnectOptions;
+use std::path::PathBuf;
 use std::str::FromStr;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // TODO: handle this warning
+    let home = home_dir().context("failed to get home directory")?;
+    let log_dir = PathBuf::from("~/.animus/logs");
+    if !log_dir.exists() {
+        std::fs::create_dir_all(&log_dir).context("failed to create log directory")?;
+    }
+
     dotenvy::dotenv().ok();
+
+    let file_appender = tracing_appender::rolling::daily(&log_dir, "app.log");
+    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
 
     tracing_subscriber::registry()
         .with(
@@ -22,6 +34,7 @@ async fn main() -> anyhow::Result<()> {
                 .unwrap_or_else(|_| "animus_server=debug,tower_http=debug".into()),
         )
         .with(tracing_subscriber::fmt::layer())
+        .with(tracing_subscriber::fmt::layer().with_writer(non_blocking))
         .init();
 
     let database_url = std::env::var("DATABASE_URL").context("DATABASE_URL must be set")?;

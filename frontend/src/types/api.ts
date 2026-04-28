@@ -61,6 +61,19 @@ export interface OllamaStatus {
   model: string;
 }
 
+export interface UpdatePersonaRequest {
+  name: string;
+  description?: string;
+  personality?: string;
+  scenario?: string;
+  first_message?: string;
+  message_example?: string;
+  content_rating?: ContentRating;
+  model?: string | null;
+  avatar_url?: string | null;
+  background_url?: string | null;
+}
+
 export interface CreatePersonaRequest {
   name: string;
   description?: string;
