@@ -47,6 +47,8 @@ async fn main() -> anyhow::Result<()> {
 
     let app = routes::personas::router()
         .merge(routes::conversations::router())
+        .merge(routes::summary::router())
+        .merge(routes::health::router())
         .with_state(app_state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8082").await?;

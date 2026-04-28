@@ -88,6 +88,17 @@ impl OllamaClient {
         Ok(parsed.response)
     }
 
+    /// Returns `true` if Ollama is reachable (GET `/api/tags` succeeds within 3 s).
+    pub async fn ping(&self) -> bool {
+        self.client
+            .get(format!("{}/api/tags", self.base_url))
+            .timeout(Duration::from_secs(3))
+            .send()
+            .await
+            .map(|r| r.status().is_success())
+            .unwrap_or(false)
+    }
+
     pub fn stream(
         &self,
         model: &str,
