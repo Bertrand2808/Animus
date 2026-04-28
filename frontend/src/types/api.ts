@@ -60,3 +60,16 @@ export interface OllamaStatus {
   online: boolean;
   model: string;
 }
+
+export interface CreatePersonaRequest {
+  name: string;
+  description?: string;
+  personality?: string;
+  scenario?: string;
+  first_message?: string;
+  message_example?: string;
+  content_rating?: ContentRating;
+  model?: string;
+  avatar_url?: string;
+  background_url?: string;
+}

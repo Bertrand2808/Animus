@@ -4,6 +4,7 @@ import type {
   ConversationDetail,
   ConversationResponse,
   ConversationSummary,
+  CreatePersonaRequest,
   OllamaStatus,
   Persona,
 } from "../types/api";
@@ -26,6 +27,14 @@ export function importPersona(json: string): Promise<Persona> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: json,
+  });
+}
+
+export function createPersona(req: CreatePersonaRequest): Promise<Persona> {
+  return request<Persona>("/api/personas", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
   });
 }
 
