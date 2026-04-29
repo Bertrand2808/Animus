@@ -4,7 +4,8 @@ mod state;
 mod summary_trigger;
 
 use animus_db::{
-    persona_repo::PersonaRepo, summary_repo::SummaryRepo, ConversationRepo, MessageRepo,
+    persona_repo::PersonaRepo, settings_repo::SettingsRepo, summary_repo::SummaryRepo,
+    ConversationRepo, MessageRepo,
 };
 use animus_llm::ollama::OllamaClient;
 use anyhow::Context;
@@ -47,19 +48,34 @@ async fn main() -> anyhow::Result<()> {
     let ollama_url =
         std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_owned());
     let model_name = std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "gemma4".to_owned());
+
+    let assets_dir = home.join(".animus/assets").to_string_lossy().into_owned();
+    let backups_dir = home.join(".animus/backups").to_string_lossy().into_owned();
+
+    let settings_repo = SettingsRepo::new(pool.clone());
+    settings_repo
+        .init_defaults(&model_name)
+        .await
+        .context("failed to initialize settings")?;
+
     let app_state = state::AppState {
         personas: PersonaRepo::new(pool.clone()),
         conversations: ConversationRepo::new(pool.clone()),
         messages: MessageRepo::new(pool.clone()),
         summaries: SummaryRepo::new(pool),
-        ollama: OllamaClient::new(ollama_url),
+        settings: settings_repo,
+        ollama: OllamaClient::new(ollama_url.clone()),
         model_name,
+        ollama_url,
+        assets_dir,
+        backups_dir,
     };
 
     let app = routes::personas::router()
         .merge(routes::conversations::router())
         .merge(routes::summary::router())
         .merge(routes::health::router())
+        .merge(routes::settings::router())
         .with_state(app_state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8082").await?;

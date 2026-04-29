@@ -25,7 +25,8 @@ async fn ollama_status(State(state): State<AppState>) -> Json<OllamaStatusRespon
 mod tests {
     use super::*;
     use animus_db::{
-        persona_repo::PersonaRepo, summary_repo::SummaryRepo, ConversationRepo, MessageRepo,
+        persona_repo::PersonaRepo, settings_repo::SettingsRepo, summary_repo::SummaryRepo,
+        ConversationRepo, MessageRepo,
     };
     use animus_llm::ollama::OllamaClient;
     use axum::{body::to_bytes, http::Request};
@@ -39,9 +40,13 @@ mod tests {
             personas: PersonaRepo::new(pool.clone()),
             conversations: ConversationRepo::new(pool.clone()),
             messages: MessageRepo::new(pool.clone()),
-            summaries: SummaryRepo::new(pool),
+            summaries: SummaryRepo::new(pool.clone()),
+            settings: SettingsRepo::new(pool),
             ollama: OllamaClient::new("http://localhost:11434"),
             model_name: "gemma4".to_owned(),
+            ollama_url: "http://localhost:11434".to_owned(),
+            assets_dir: "/tmp/assets".to_owned(),
+            backups_dir: "/tmp/backups".to_owned(),
         };
         router().with_state(state)
     }
