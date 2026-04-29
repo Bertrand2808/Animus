@@ -1,5 +1,5 @@
 use animus_core::persona::{Conversation, Message, Role};
-use animus_llm::{build_prompt, ollama::StreamChunk, OllamaError};
+use animus_llm::{build_prompt, ollama::StreamChunk, resolve_placeholders, OllamaError};
 use axum::response::sse::{Event as SseEvent, Sse};
 use axum::{
     extract::{Path, Query, State},
@@ -123,12 +123,18 @@ async fn create_conversation(
         .map_err(|_| ApiError::Internal)?
         .ok_or(ApiError::NotFound)?;
 
-    // 2. Remplacer placeholders dans first_message
-    // TODO : do we really want to replace user by you ? Maybe we should ask user name
-    let first_message = persona
-        .first_message
-        .replace("{{char}}", &persona.name)
-        .replace("{{user}}", "You");
+    // 2. Fetch user_name from settings for placeholder resolution
+    let settings = state.settings.get().await.map_err(|e| {
+        tracing::error!("failed to fetch settings for placeholder resolution: {:?}", e);
+        ApiError::Internal
+    })?;
+
+    let first_message = resolve_placeholders(
+        &persona.first_message,
+        &persona.name,
+        &settings.user_name,
+        persona.response_length_limit,
+    );
 
     // 3. Créer la conversation
     let conv = Conversation {
@@ -263,8 +269,13 @@ async fn create_message(
     // 5. Fetch summary optional
     let summary = state.summaries.find_latest(conv_id).await.ok();
 
-    // 6. Build prompt
-    let prompt = build_prompt(&persona, &history, summary.flatten().as_ref());
+    // 6. Fetch user_name and build structured prompt
+    let settings = state.settings.get().await.map_err(|e| {
+        tracing::error!(conversation_id = %conv_id, "failed to fetch settings: {:?}", e);
+        ApiError::Internal
+    })?;
+
+    let prompt = build_prompt(&persona, &history, summary.flatten().as_ref(), &settings.user_name);
     let model = state.model_name.clone();
     tracing::debug!(
         target: "ollama_prompt",
@@ -510,7 +521,8 @@ mod tests {
         let body = body_json(res).await;
         let msg = body["first_message"].as_str().unwrap();
         assert!(msg.contains("Alice"), "{{{{char}}}} not replaced: {msg}");
-        assert!(msg.contains("You"), "{{{{user}}}} not replaced: {msg}");
+        // {{user}} resolves to the settings user_name; default when no row is seeded is "User"
+        assert!(msg.contains("User"), "{{{{user}}}} not replaced: {msg}");
         assert!(
             !msg.contains("{{char}}"),
             "raw placeholder still present: {msg}"
