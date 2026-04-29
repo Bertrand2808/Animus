@@ -23,6 +23,21 @@ impl PersonaRepo {
     pub async fn insert(&self, persona: &Persona) -> Result<(), RepoError> {
         let id = persona.id.to_string();
         let content_rating = persona.content_rating.to_string();
+        tracing::debug!(
+            target: "personas",
+            persona_id = %persona.id,
+            persona_name = %persona.name,
+            has_model_instructions = !persona.model_instructions.trim().is_empty(),
+            has_appearance = !persona.appearance.trim().is_empty(),
+            has_speech_style = !persona.speech_style.trim().is_empty(),
+            has_character_goals = !persona.character_goals.trim().is_empty(),
+            has_post_history_instructions = !persona.post_history_instructions.trim().is_empty(),
+            response_length_limit = persona.response_length_limit,
+            temperature = persona.temperature,
+            repeat_penalty = persona.repeat_penalty,
+            instruction_template = %persona.instruction_template,
+            "inserting persona in db"
+        );
         sqlx::query!(
             r#"
       INSERT INTO personas (
@@ -62,6 +77,7 @@ impl PersonaRepo {
             sqlx::Error::Database(ref db) if db.is_unique_violation() => RepoError::Duplicate,
             other => other.into(),
         })?;
+        tracing::debug!(target: "personas", persona_id = %persona.id, "insert complete");
         Ok(())
     }
 
@@ -98,6 +114,13 @@ impl PersonaRepo {
         )
         .fetch_optional(&self.pool)
         .await?;
+
+        tracing::debug!(
+            target: "personas",
+            persona_id = %id,
+            found = row.is_some(),
+            "find persona by id complete"
+        );
 
         row.map(|r| {
             Ok(Persona {
@@ -258,11 +281,31 @@ impl PersonaRepo {
             })
             .collect::<Result<Vec<_>, sqlx::Error>>()?,
         };
+        tracing::debug!(
+            target: "personas",
+            content_rating = content_rating.map(|cr| cr.to_string()).as_deref(),
+            count = rows.len(),
+            "list personas complete"
+        );
         Ok(rows)
     }
 
     pub async fn update(&self, persona: &Persona) -> Result<bool, RepoError> {
-        tracing::debug!(target: "personas", persona_id = %persona.id, "updating persona in db");
+        tracing::debug!(
+            target: "personas",
+            persona_id = %persona.id,
+            persona_name = %persona.name,
+            has_model_instructions = !persona.model_instructions.trim().is_empty(),
+            has_appearance = !persona.appearance.trim().is_empty(),
+            has_speech_style = !persona.speech_style.trim().is_empty(),
+            has_character_goals = !persona.character_goals.trim().is_empty(),
+            has_post_history_instructions = !persona.post_history_instructions.trim().is_empty(),
+            response_length_limit = persona.response_length_limit,
+            temperature = persona.temperature,
+            repeat_penalty = persona.repeat_penalty,
+            instruction_template = %persona.instruction_template,
+            "updating persona in db"
+        );
         let id = persona.id.to_string();
         let content_rating = persona.content_rating.to_string();
         let result = sqlx::query!(

@@ -266,6 +266,19 @@ async fn create_message(
     // 6. Build prompt
     let prompt = build_prompt(&persona, &history, summary.flatten().as_ref());
     let model = state.model_name.clone();
+    tracing::debug!(
+        target: "ollama_prompt",
+        conversation_id = %conv_id,
+        persona_id = %persona.id,
+        model = %model,
+        prompt_messages = prompt.len(),
+        streaming = want_sse_header,
+        response_length_limit = persona.response_length_limit,
+        temperature = persona.temperature,
+        repeat_penalty = persona.repeat_penalty,
+        instruction_template = %persona.instruction_template,
+        "dispatching prompt to ollama"
+    );
 
     if want_sse_header {
         // 7. Call Ollama (streaming)

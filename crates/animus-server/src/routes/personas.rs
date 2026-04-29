@@ -34,6 +34,7 @@ async fn import_persona(
     State(state): State<AppState>,
     body: axum::body::Bytes,
 ) -> Result<impl IntoResponse, ApiError> {
+    tracing::debug!(target: "personas", bytes = body.len(), "persona import request received");
     let card: CharacterCardV2 =
         serde_json::from_slice(&body).map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
@@ -51,6 +52,7 @@ async fn import_persona(
         RepoError::Db(_) => ApiError::Internal,
     })?;
 
+    tracing::debug!(target: "personas", persona_id = %persona.id, "persona import complete");
     Ok((StatusCode::CREATED, Json(PersonaResponse::from(persona))))
 }
 
@@ -150,6 +152,21 @@ async fn create_persona(
     State(state): State<AppState>,
     Json(req): Json<CreatePersonaRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
+    tracing::debug!(
+        target: "personas",
+        persona_name = %req.name,
+        has_model_instructions = !req.model_instructions.trim().is_empty(),
+        has_appearance = !req.appearance.trim().is_empty(),
+        has_speech_style = !req.speech_style.trim().is_empty(),
+        has_character_goals = !req.character_goals.trim().is_empty(),
+        has_post_history_instructions = !req.post_history_instructions.trim().is_empty(),
+        response_length_limit = req.response_length_limit,
+        temperature = req.temperature,
+        repeat_penalty = req.repeat_penalty,
+        instruction_template = %req.instruction_template,
+        "create persona request received"
+    );
+
     if req.name.trim().is_empty() {
         return Err(ApiError::UnprocessableEntity("name is required".to_owned()));
     }
@@ -185,6 +202,7 @@ async fn create_persona(
         RepoError::Db(_) => ApiError::Internal,
     })?;
 
+    tracing::debug!(target: "personas", persona_id = %persona.id, "create persona complete");
     Ok((StatusCode::CREATED, Json(PersonaResponse::from(persona))))
 }
 
@@ -195,7 +213,21 @@ async fn patch_persona(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdatePersonaRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    tracing::debug!(target: "personas", persona_id = %id, "patch request received");
+    tracing::debug!(
+        target: "personas",
+        persona_id = %id,
+        persona_name = %req.name,
+        has_model_instructions = !req.model_instructions.trim().is_empty(),
+        has_appearance = !req.appearance.trim().is_empty(),
+        has_speech_style = !req.speech_style.trim().is_empty(),
+        has_character_goals = !req.character_goals.trim().is_empty(),
+        has_post_history_instructions = !req.post_history_instructions.trim().is_empty(),
+        response_length_limit = req.response_length_limit,
+        temperature = req.temperature,
+        repeat_penalty = req.repeat_penalty,
+        instruction_template = %req.instruction_template,
+        "patch persona request received"
+    );
 
     if req.name.trim().is_empty() {
         return Err(ApiError::UnprocessableEntity("name is required".to_owned()));
