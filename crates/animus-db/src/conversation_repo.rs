@@ -51,7 +51,16 @@ impl ConversationRepo {
                 p.background_url,
                 p.content_rating AS "p_content_rating!",
                 p.model,
-                p.raw_card
+                p.raw_card,
+                p.model_instructions AS "p_model_instructions!",
+                p.appearance AS "p_appearance!",
+                p.speech_style AS "p_speech_style!",
+                p.character_goals AS "p_character_goals!",
+                p.post_history_instructions AS "p_post_history_instructions!",
+                p.response_length_limit AS "p_response_length_limit!",
+                p.temperature AS "p_temperature!",
+                p.repeat_penalty AS "p_repeat_penalty!",
+                p.instruction_template AS "p_instruction_template!"
             FROM conversations c
             INNER JOIN personas p ON c.persona_id = p.id
             WHERE c.id = ?
@@ -92,6 +101,15 @@ impl ConversationRepo {
                     .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
                 model: r.model,
                 raw_card: r.raw_card,
+                model_instructions: r.p_model_instructions,
+                appearance: r.p_appearance,
+                speech_style: r.p_speech_style,
+                character_goals: r.p_character_goals,
+                post_history_instructions: r.p_post_history_instructions,
+                response_length_limit: r.p_response_length_limit,
+                temperature: r.p_temperature,
+                repeat_penalty: r.p_repeat_penalty,
+                instruction_template: r.p_instruction_template,
             };
             Ok((conv, persona))
         })
@@ -176,6 +194,15 @@ mod tests {
             content_rating: ContentRating::Pg,
             model: None,
             raw_card: Some("{}".to_string()),
+            model_instructions: String::new(),
+            appearance: String::new(),
+            speech_style: String::new(),
+            character_goals: String::new(),
+            post_history_instructions: String::new(),
+            response_length_limit: 1200,
+            temperature: 0.65,
+            repeat_penalty: 1.12,
+            instruction_template: "default".to_owned(),
         };
         PersonaRepo::new(pool.clone())
             .insert(&persona)

@@ -415,6 +415,15 @@ mod tests {
             content_rating: ContentRating::Pg,
             model: None,
             raw_card: None,
+            model_instructions: String::new(),
+            appearance: String::new(),
+            speech_style: String::new(),
+            character_goals: String::new(),
+            post_history_instructions: String::new(),
+            response_length_limit: 1200,
+            temperature: 0.65,
+            repeat_penalty: 1.12,
+            instruction_template: "default".to_owned(),
         };
         PersonaRepo::new(pool.clone())
             .insert(&persona)

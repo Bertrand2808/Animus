@@ -12,6 +12,15 @@ export interface Persona {
   background_url: string | null;
   content_rating: ContentRating;
   model: string | null;
+  model_instructions: string;
+  appearance: string;
+  speech_style: string;
+  character_goals: string;
+  post_history_instructions: string;
+  response_length_limit: number;
+  temperature: number;
+  repeat_penalty: number;
+  instruction_template: string;
 }
 
 export interface Message {
@@ -72,6 +81,15 @@ export interface UpdatePersonaRequest {
   model?: string | null;
   avatar_url?: string | null;
   background_url?: string | null;
+  model_instructions?: string;
+  appearance?: string;
+  speech_style?: string;
+  character_goals?: string;
+  post_history_instructions?: string;
+  response_length_limit?: number;
+  temperature?: number;
+  repeat_penalty?: number;
+  instruction_template?: string;
 }
 
 export interface CreatePersonaRequest {
@@ -85,4 +103,13 @@ export interface CreatePersonaRequest {
   model?: string;
   avatar_url?: string;
   background_url?: string;
+  model_instructions?: string;
+  appearance?: string;
+  speech_style?: string;
+  character_goals?: string;
+  post_history_instructions?: string;
+  response_length_limit?: number;
+  temperature?: number;
+  repeat_penalty?: number;
+  instruction_template?: string;
 }

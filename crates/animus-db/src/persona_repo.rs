@@ -28,9 +28,11 @@ impl PersonaRepo {
       INSERT INTO personas (
         id, name, description, personality, scenario, first_message,
         message_example, avatar_url, background_url, content_rating, model,
-        raw_card, created_at
+        raw_card, model_instructions, appearance, speech_style, character_goals,
+        post_history_instructions, response_length_limit, temperature, repeat_penalty,
+        instruction_template, created_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch())
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch())
       "#,
             id,
             persona.name,
@@ -44,6 +46,15 @@ impl PersonaRepo {
             content_rating,
             persona.model,
             persona.raw_card,
+            persona.model_instructions,
+            persona.appearance,
+            persona.speech_style,
+            persona.character_goals,
+            persona.post_history_instructions,
+            persona.response_length_limit,
+            persona.temperature,
+            persona.repeat_penalty,
+            persona.instruction_template,
         )
         .execute(&self.pool)
         .await
@@ -71,7 +82,16 @@ impl PersonaRepo {
         background_url,
         content_rating AS "content_rating!",
         model,
-        raw_card
+        raw_card,
+        model_instructions AS "model_instructions!",
+        appearance AS "appearance!",
+        speech_style AS "speech_style!",
+        character_goals AS "character_goals!",
+        post_history_instructions AS "post_history_instructions!",
+        response_length_limit AS "response_length_limit!",
+        temperature AS "temperature!",
+        repeat_penalty AS "repeat_penalty!",
+        instruction_template AS "instruction_template!"
       FROM personas WHERE id = ?
       "#,
             id_str
@@ -96,6 +116,15 @@ impl PersonaRepo {
                     .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
                 model: r.model,
                 raw_card: r.raw_card,
+                model_instructions: r.model_instructions,
+                appearance: r.appearance,
+                speech_style: r.speech_style,
+                character_goals: r.character_goals,
+                post_history_instructions: r.post_history_instructions,
+                response_length_limit: r.response_length_limit,
+                temperature: r.temperature,
+                repeat_penalty: r.repeat_penalty,
+                instruction_template: r.instruction_template,
             })
         })
         .transpose()
@@ -122,7 +151,16 @@ impl PersonaRepo {
             background_url,
             content_rating AS "content_rating!",
             model,
-            raw_card
+            raw_card,
+            model_instructions AS "model_instructions!",
+            appearance AS "appearance!",
+            speech_style AS "speech_style!",
+            character_goals AS "character_goals!",
+            post_history_instructions AS "post_history_instructions!",
+            response_length_limit AS "response_length_limit!",
+            temperature AS "temperature!",
+            repeat_penalty AS "repeat_penalty!",
+            instruction_template AS "instruction_template!"
           FROM personas WHERE content_rating = ? ORDER BY name
           "#,
                     cr_str
@@ -147,6 +185,15 @@ impl PersonaRepo {
                             .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
                         model: r.model,
                         raw_card: r.raw_card,
+                        model_instructions: r.model_instructions,
+                        appearance: r.appearance,
+                        speech_style: r.speech_style,
+                        character_goals: r.character_goals,
+                        post_history_instructions: r.post_history_instructions,
+                        response_length_limit: r.response_length_limit,
+                        temperature: r.temperature,
+                        repeat_penalty: r.repeat_penalty,
+                        instruction_template: r.instruction_template,
                     })
                 })
                 .collect::<Result<Vec<_>, sqlx::Error>>()?
@@ -165,7 +212,16 @@ impl PersonaRepo {
           background_url,
           content_rating AS "content_rating!",
           model,
-          raw_card
+          raw_card,
+          model_instructions AS "model_instructions!",
+          appearance AS "appearance!",
+          speech_style AS "speech_style!",
+          character_goals AS "character_goals!",
+          post_history_instructions AS "post_history_instructions!",
+          response_length_limit AS "response_length_limit!",
+          temperature AS "temperature!",
+          repeat_penalty AS "repeat_penalty!",
+          instruction_template AS "instruction_template!"
         FROM personas ORDER BY name
         "#
             )
@@ -189,6 +245,15 @@ impl PersonaRepo {
                         .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
                     model: r.model,
                     raw_card: r.raw_card,
+                    model_instructions: r.model_instructions,
+                    appearance: r.appearance,
+                    speech_style: r.speech_style,
+                    character_goals: r.character_goals,
+                    post_history_instructions: r.post_history_instructions,
+                    response_length_limit: r.response_length_limit,
+                    temperature: r.temperature,
+                    repeat_penalty: r.repeat_penalty,
+                    instruction_template: r.instruction_template,
                 })
             })
             .collect::<Result<Vec<_>, sqlx::Error>>()?,
@@ -205,7 +270,11 @@ impl PersonaRepo {
             UPDATE personas SET
               name = ?, description = ?, personality = ?, scenario = ?,
               first_message = ?, message_example = ?, avatar_url = ?,
-              background_url = ?, content_rating = ?, model = ?
+              background_url = ?, content_rating = ?, model = ?,
+              model_instructions = ?, appearance = ?, speech_style = ?,
+              character_goals = ?, post_history_instructions = ?,
+              response_length_limit = ?, temperature = ?, repeat_penalty = ?,
+              instruction_template = ?
             WHERE id = ?
             "#,
             persona.name,
@@ -218,6 +287,15 @@ impl PersonaRepo {
             persona.background_url,
             content_rating,
             persona.model,
+            persona.model_instructions,
+            persona.appearance,
+            persona.speech_style,
+            persona.character_goals,
+            persona.post_history_instructions,
+            persona.response_length_limit,
+            persona.temperature,
+            persona.repeat_penalty,
+            persona.instruction_template,
             id,
         )
         .execute(&self.pool)
@@ -263,17 +341,76 @@ mod tests {
             content_rating,
             model: None,
             raw_card: None,
+            model_instructions: String::new(),
+            appearance: String::new(),
+            speech_style: String::new(),
+            character_goals: String::new(),
+            post_history_instructions: String::new(),
+            response_length_limit: 1200,
+            temperature: 0.65,
+            repeat_penalty: 1.12,
+            instruction_template: "default".to_owned(),
         }
     }
 
     #[sqlx::test(migrator = "crate::persona_repo::MIGRATOR")]
     async fn insert_and_fetch_persona(pool: SqlitePool) {
         let repo = PersonaRepo::new(pool);
-        let persona = make_persona("Aria", ContentRating::Pg);
+        let mut persona = make_persona("Aria", ContentRating::Pg);
+        persona.model_instructions = "Stay in character".to_owned();
+        persona.appearance = "Silver hair".to_owned();
+        persona.speech_style = "Concise".to_owned();
+        persona.character_goals = "Help the user".to_owned();
+        persona.post_history_instructions = "Use recent context".to_owned();
+        persona.response_length_limit = 900;
+        persona.temperature = 0.8;
+        persona.repeat_penalty = 1.2;
+        persona.instruction_template = "cinematic".to_owned();
         repo.insert(&persona).await.unwrap();
         let fetched = repo.find_by_id(persona.id).await.unwrap().unwrap();
         assert_eq!(fetched.name, "Aria");
         assert_eq!(fetched.content_rating, ContentRating::Pg);
+        assert_eq!(fetched.model_instructions, "Stay in character");
+        assert_eq!(fetched.appearance, "Silver hair");
+        assert_eq!(fetched.speech_style, "Concise");
+        assert_eq!(fetched.character_goals, "Help the user");
+        assert_eq!(fetched.post_history_instructions, "Use recent context");
+        assert_eq!(fetched.response_length_limit, 900);
+        assert_eq!(fetched.temperature, 0.8);
+        assert_eq!(fetched.repeat_penalty, 1.2);
+        assert_eq!(fetched.instruction_template, "cinematic");
+    }
+
+    #[sqlx::test(migrator = "crate::persona_repo::MIGRATOR")]
+    async fn inserted_old_shape_persona_fetches_structured_defaults(pool: SqlitePool) {
+        let id = Uuid::now_v7();
+        let id_str = id.to_string();
+        sqlx::query!(
+            r#"
+            INSERT INTO personas (
+                id, name, description, personality, scenario, first_message,
+                message_example, avatar_url, background_url, content_rating, model,
+                raw_card, created_at
+            )
+            VALUES (?, 'Old', '', '', '', '', '', NULL, NULL, 'pg', NULL, NULL, unixepoch())
+            "#,
+            id_str
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let repo = PersonaRepo::new(pool);
+        let fetched = repo.find_by_id(id).await.unwrap().unwrap();
+        assert_eq!(fetched.model_instructions, "");
+        assert_eq!(fetched.appearance, "");
+        assert_eq!(fetched.speech_style, "");
+        assert_eq!(fetched.character_goals, "");
+        assert_eq!(fetched.post_history_instructions, "");
+        assert_eq!(fetched.response_length_limit, 1200);
+        assert_eq!(fetched.temperature, 0.65);
+        assert_eq!(fetched.repeat_penalty, 1.12);
+        assert_eq!(fetched.instruction_template, "default");
     }
 
     #[sqlx::test(migrator = "crate::persona_repo::MIGRATOR")]
@@ -359,9 +496,19 @@ mod tests {
         let mut p = make_persona("Aria", ContentRating::Pg);
         repo.insert(&p).await.unwrap();
         p.name = "Aria Renamed".to_owned();
+        p.model_instructions = "Updated instructions".to_owned();
+        p.response_length_limit = 300;
+        p.temperature = 0.4;
+        p.repeat_penalty = 1.3;
+        p.instruction_template = "updated".to_owned();
         assert!(repo.update(&p).await.unwrap());
         let fetched = repo.find_by_id(p.id).await.unwrap().unwrap();
         assert_eq!(fetched.name, "Aria Renamed");
+        assert_eq!(fetched.model_instructions, "Updated instructions");
+        assert_eq!(fetched.response_length_limit, 300);
+        assert_eq!(fetched.temperature, 0.4);
+        assert_eq!(fetched.repeat_penalty, 1.3);
+        assert_eq!(fetched.instruction_template, "updated");
     }
 
     #[sqlx::test(migrator = "crate::persona_repo::MIGRATOR")]

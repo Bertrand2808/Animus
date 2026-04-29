@@ -10,11 +10,6 @@ interface UseStreamingMessageResult {
   sendMessage: (content: string) => void;
 }
 
-interface SSEEvent {
-  event: string | null;
-  data: string;
-}
-
 async function parseSSEStream(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   onToken: (text: string) => void,
