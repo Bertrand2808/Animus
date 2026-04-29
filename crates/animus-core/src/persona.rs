@@ -22,14 +22,23 @@ pub struct Persona {
     pub content_rating: ContentRating,
     pub model: Option<String>,
     pub raw_card: Option<String>,
+    /// Instructions for model behavior (e.g., "Stay in character", "Be concise").
     pub model_instructions: String,
+    /// Physical appearance description of the character.
     pub appearance: String,
+    /// Speech patterns and style (e.g., "Short sentences", "Formal tone").
     pub speech_style: String,
+    /// Character's goals and motivations.
     pub character_goals: String,
+    /// Instructions applied after conversation history (e.g., "Remember to be helpful").
     pub post_history_instructions: String,
+    /// Maximum response length in tokens (default: 1200).
     pub response_length_limit: i64,
+    /// LLM temperature parameter for controlling randomness (0.0-2.0, default: 0.65).
     pub temperature: f64,
+    /// LLM repeat penalty to discourage repetition (default: 1.12).
     pub repeat_penalty: f64,
+    /// Instruction template variant identifier (default: "default").
     pub instruction_template: String,
 }
 

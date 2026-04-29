@@ -140,6 +140,11 @@ mod tests {
     use sqlx::SqlitePool;
 
     async fn seed_conversation(pool: &SqlitePool) -> Uuid {
+        use animus_core::persona::{
+            DEFAULT_INSTRUCTION_TEMPLATE, DEFAULT_REPEAT_PENALTY, DEFAULT_RESPONSE_LENGTH_LIMIT,
+            DEFAULT_TEMPERATURE,
+        };
+
         let persona = Persona {
             id: Uuid::now_v7(),
             name: format!("test-{}", Uuid::now_v7()),
@@ -158,10 +163,10 @@ mod tests {
             speech_style: String::new(),
             character_goals: String::new(),
             post_history_instructions: String::new(),
-            response_length_limit: 1200,
-            temperature: 0.65,
-            repeat_penalty: 1.12,
-            instruction_template: "default".to_owned(),
+            response_length_limit: DEFAULT_RESPONSE_LENGTH_LIMIT,
+            temperature: DEFAULT_TEMPERATURE,
+            repeat_penalty: DEFAULT_REPEAT_PENALTY,
+            instruction_template: DEFAULT_INSTRUCTION_TEMPLATE.to_owned(),
         };
         PersonaRepo::new(pool.clone())
             .insert(&persona)

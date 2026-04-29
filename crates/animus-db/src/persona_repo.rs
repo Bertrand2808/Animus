@@ -367,7 +367,13 @@ static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
 #[cfg(test)]
 mod tests {
     use super::*;
-    use animus_core::{content_rating::ContentRating, persona::Persona};
+    use animus_core::{
+        content_rating::ContentRating,
+        persona::{
+            DEFAULT_INSTRUCTION_TEMPLATE, DEFAULT_REPEAT_PENALTY, DEFAULT_RESPONSE_LENGTH_LIMIT,
+            DEFAULT_TEMPERATURE, Persona,
+        },
+    };
     use uuid::Uuid;
 
     fn make_persona(name: &str, content_rating: ContentRating) -> Persona {
@@ -389,10 +395,10 @@ mod tests {
             speech_style: String::new(),
             character_goals: String::new(),
             post_history_instructions: String::new(),
-            response_length_limit: 1200,
-            temperature: 0.65,
-            repeat_penalty: 1.12,
-            instruction_template: "default".to_owned(),
+            response_length_limit: DEFAULT_RESPONSE_LENGTH_LIMIT,
+            temperature: DEFAULT_TEMPERATURE,
+            repeat_penalty: DEFAULT_REPEAT_PENALTY,
+            instruction_template: DEFAULT_INSTRUCTION_TEMPLATE.to_owned(),
         }
     }
 
@@ -450,10 +456,10 @@ mod tests {
         assert_eq!(fetched.speech_style, "");
         assert_eq!(fetched.character_goals, "");
         assert_eq!(fetched.post_history_instructions, "");
-        assert_eq!(fetched.response_length_limit, 1200);
-        assert_eq!(fetched.temperature, 0.65);
-        assert_eq!(fetched.repeat_penalty, 1.12);
-        assert_eq!(fetched.instruction_template, "default");
+        assert_eq!(fetched.response_length_limit, DEFAULT_RESPONSE_LENGTH_LIMIT);
+        assert_eq!(fetched.temperature, DEFAULT_TEMPERATURE);
+        assert_eq!(fetched.repeat_penalty, DEFAULT_REPEAT_PENALTY);
+        assert_eq!(fetched.instruction_template, DEFAULT_INSTRUCTION_TEMPLATE);
     }
 
     #[sqlx::test(migrator = "crate::persona_repo::MIGRATOR")]
