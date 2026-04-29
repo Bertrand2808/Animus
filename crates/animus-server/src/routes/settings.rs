@@ -72,8 +72,8 @@ async fn patch_settings(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use animus_db::{settings_repo::SettingsRepo, ConversationRepo, MessageRepo};
     use animus_db::{persona_repo::PersonaRepo, summary_repo::SummaryRepo};
+    use animus_db::{settings_repo::SettingsRepo, ConversationRepo, MessageRepo};
     use animus_llm::ollama::OllamaClient;
     use axum::{
         body::{to_bytes, Body},
@@ -82,8 +82,7 @@ mod tests {
     use sqlx::SqlitePool;
     use tower::ServiceExt;
 
-    static MIGRATOR: sqlx::migrate::Migrator =
-        sqlx::migrate!("../../crates/animus-db/migrations");
+    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../crates/animus-db/migrations");
 
     fn make_state(pool: SqlitePool) -> AppState {
         AppState {

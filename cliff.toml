@@ -1,0 +1,39 @@
+[changelog]
+header = "# Changelog\n\n"
+body = """
+{% if version %}\
+## {{ version }} — {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## Unreleased
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group }}
+{% for commit in commits %}
+- {{ commit.message | upper_first }} ([`{{ commit.id | truncate(length=7, end="") }}`](https://github.com/Bertrand2808/animus/commit/{{ commit.id }}))\
+{% endfor %}
+{% endfor %}\n
+"""
+trim = true
+footer = ""
+
+[git]
+conventional_commits = true
+filter_unconventional = false
+# Strip leading emoji before parsing conventional commit
+commit_preprocessors = [
+  { pattern = '^[^\w\s(]+\s+', replace = "" },
+]
+commit_parsers = [
+  { message = "^feat", group = "Features" },
+  { message = "^fix", group = "Bug Fixes" },
+  { message = "^refactor", group = "Refactor" },
+  { message = "^perf", group = "Performance" },
+  { message = "^test", group = "Tests" },
+  { message = "^docs", group = "Documentation" },
+  { message = "^chore", group = "Chores" },
+  { message = "^build", group = "Build" },
+  { message = "^ci", group = "CI" },
+]
+filter_commits = false
+tag_pattern = "v[0-9].*"
+sort_commits = "newest"
