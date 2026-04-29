@@ -117,7 +117,7 @@ impl OllamaClient {
                 .json(&request_body)
                 .send()
                 .await
-                .map_err(|e| OllamaError::Network(e))?;
+                .map_err(OllamaError::Network)?;
 
             if !response.status().is_success() {
                 return Err(OllamaError::Model(
@@ -126,7 +126,7 @@ impl OllamaClient {
             }
 
             let byte_stream = response.bytes_stream()
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+                    .map_err(std::io::Error::other);
             let reader = StreamReader::new(byte_stream);
             let mut lines_stream = tokio_stream::wrappers::LinesStream::new(reader.lines());
             while let Some(line) = lines_stream.next().await {
