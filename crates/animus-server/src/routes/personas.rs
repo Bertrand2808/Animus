@@ -1,4 +1,10 @@
-use animus_core::{CardImportError, CharacterCardV2, ContentRating, Persona};
+use animus_core::{
+    persona::{
+        DEFAULT_INSTRUCTION_TEMPLATE, DEFAULT_REPEAT_PENALTY, DEFAULT_RESPONSE_LENGTH_LIMIT,
+        DEFAULT_TEMPERATURE,
+    },
+    CardImportError, CharacterCardV2, ContentRating, Persona,
+};
 use animus_db::persona_repo::RepoError;
 use axum::{
     extract::{Path, Query, State},
@@ -28,6 +34,7 @@ async fn import_persona(
     State(state): State<AppState>,
     body: axum::body::Bytes,
 ) -> Result<impl IntoResponse, ApiError> {
+    tracing::debug!(target: "personas", bytes = body.len(), "persona import request received");
     let card: CharacterCardV2 =
         serde_json::from_slice(&body).map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
@@ -45,6 +52,7 @@ async fn import_persona(
         RepoError::Db(_) => ApiError::Internal,
     })?;
 
+    tracing::debug!(target: "personas", persona_id = %persona.id, "persona import complete");
     Ok((StatusCode::CREATED, Json(PersonaResponse::from(persona))))
 }
 
@@ -67,6 +75,24 @@ pub struct CreatePersonaRequest {
     pub model: Option<String>,
     pub avatar_url: Option<String>,
     pub background_url: Option<String>,
+    #[serde(default)]
+    pub model_instructions: String,
+    #[serde(default)]
+    pub appearance: String,
+    #[serde(default)]
+    pub speech_style: String,
+    #[serde(default)]
+    pub character_goals: String,
+    #[serde(default)]
+    pub post_history_instructions: String,
+    #[serde(default = "default_response_length_limit")]
+    pub response_length_limit: i64,
+    #[serde(default = "default_temperature")]
+    pub temperature: f64,
+    #[serde(default = "default_repeat_penalty")]
+    pub repeat_penalty: f64,
+    #[serde(default = "default_instruction_template")]
+    pub instruction_template: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -86,12 +112,61 @@ pub struct UpdatePersonaRequest {
     pub model: Option<String>,
     pub avatar_url: Option<String>,
     pub background_url: Option<String>,
+    #[serde(default)]
+    pub model_instructions: String,
+    #[serde(default)]
+    pub appearance: String,
+    #[serde(default)]
+    pub speech_style: String,
+    #[serde(default)]
+    pub character_goals: String,
+    #[serde(default)]
+    pub post_history_instructions: String,
+    #[serde(default = "default_response_length_limit")]
+    pub response_length_limit: i64,
+    #[serde(default = "default_temperature")]
+    pub temperature: f64,
+    #[serde(default = "default_repeat_penalty")]
+    pub repeat_penalty: f64,
+    #[serde(default = "default_instruction_template")]
+    pub instruction_template: String,
+}
+
+fn default_response_length_limit() -> i64 {
+    DEFAULT_RESPONSE_LENGTH_LIMIT
+}
+
+fn default_temperature() -> f64 {
+    DEFAULT_TEMPERATURE
+}
+
+fn default_repeat_penalty() -> f64 {
+    DEFAULT_REPEAT_PENALTY
+}
+
+fn default_instruction_template() -> String {
+    DEFAULT_INSTRUCTION_TEMPLATE.to_owned()
 }
 
 async fn create_persona(
     State(state): State<AppState>,
     Json(req): Json<CreatePersonaRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
+    tracing::debug!(
+        target: "personas",
+        persona_name = %req.name,
+        has_model_instructions = !req.model_instructions.trim().is_empty(),
+        has_appearance = !req.appearance.trim().is_empty(),
+        has_speech_style = !req.speech_style.trim().is_empty(),
+        has_character_goals = !req.character_goals.trim().is_empty(),
+        has_post_history_instructions = !req.post_history_instructions.trim().is_empty(),
+        response_length_limit = req.response_length_limit,
+        temperature = req.temperature,
+        repeat_penalty = req.repeat_penalty,
+        instruction_template = %req.instruction_template,
+        "create persona request received"
+    );
+
     if req.name.trim().is_empty() {
         return Err(ApiError::UnprocessableEntity("name is required".to_owned()));
     }
@@ -109,6 +184,15 @@ async fn create_persona(
         content_rating: req.content_rating.unwrap_or(ContentRating::Pg),
         model: req.model,
         raw_card: None,
+        model_instructions: req.model_instructions,
+        appearance: req.appearance,
+        speech_style: req.speech_style,
+        character_goals: req.character_goals,
+        post_history_instructions: req.post_history_instructions,
+        response_length_limit: req.response_length_limit,
+        temperature: req.temperature,
+        repeat_penalty: req.repeat_penalty,
+        instruction_template: req.instruction_template,
     };
 
     state.personas.insert(&persona).await.map_err(|e| match e {
@@ -118,6 +202,7 @@ async fn create_persona(
         RepoError::Db(_) => ApiError::Internal,
     })?;
 
+    tracing::debug!(target: "personas", persona_id = %persona.id, "create persona complete");
     Ok((StatusCode::CREATED, Json(PersonaResponse::from(persona))))
 }
 
@@ -128,7 +213,21 @@ async fn patch_persona(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdatePersonaRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    tracing::debug!(target: "personas", persona_id = %id, "patch request received");
+    tracing::debug!(
+        target: "personas",
+        persona_id = %id,
+        persona_name = %req.name,
+        has_model_instructions = !req.model_instructions.trim().is_empty(),
+        has_appearance = !req.appearance.trim().is_empty(),
+        has_speech_style = !req.speech_style.trim().is_empty(),
+        has_character_goals = !req.character_goals.trim().is_empty(),
+        has_post_history_instructions = !req.post_history_instructions.trim().is_empty(),
+        response_length_limit = req.response_length_limit,
+        temperature = req.temperature,
+        repeat_penalty = req.repeat_penalty,
+        instruction_template = %req.instruction_template,
+        "patch persona request received"
+    );
 
     if req.name.trim().is_empty() {
         return Err(ApiError::UnprocessableEntity("name is required".to_owned()));
@@ -153,17 +252,22 @@ async fn patch_persona(
     persona.model = req.model;
     persona.avatar_url = req.avatar_url;
     persona.background_url = req.background_url;
+    persona.model_instructions = req.model_instructions;
+    persona.appearance = req.appearance;
+    persona.speech_style = req.speech_style;
+    persona.character_goals = req.character_goals;
+    persona.post_history_instructions = req.post_history_instructions;
+    persona.response_length_limit = req.response_length_limit;
+    persona.temperature = req.temperature;
+    persona.repeat_penalty = req.repeat_penalty;
+    persona.instruction_template = req.instruction_template;
 
-    state
-        .personas
-        .update(&persona)
-        .await
-        .map_err(|e| match e {
-            RepoError::Duplicate => {
-                ApiError::Conflict("a persona with this name already exists".to_owned())
-            }
-            RepoError::Db(_) => ApiError::Internal,
-        })?;
+    state.personas.update(&persona).await.map_err(|e| match e {
+        RepoError::Duplicate => {
+            ApiError::Conflict("a persona with this name already exists".to_owned())
+        }
+        RepoError::Db(_) => ApiError::Internal,
+    })?;
 
     tracing::debug!(target: "personas", persona_id = %id, "patch complete");
     Ok(Json(PersonaResponse::from(persona)))
@@ -244,6 +348,15 @@ pub struct PersonaResponse {
     pub background_url: Option<String>,
     pub content_rating: ContentRating,
     pub model: Option<String>,
+    pub model_instructions: String,
+    pub appearance: String,
+    pub speech_style: String,
+    pub character_goals: String,
+    pub post_history_instructions: String,
+    pub response_length_limit: i64,
+    pub temperature: f64,
+    pub repeat_penalty: f64,
+    pub instruction_template: String,
 }
 
 impl From<Persona> for PersonaResponse {
@@ -260,6 +373,15 @@ impl From<Persona> for PersonaResponse {
             background_url: p.background_url,
             content_rating: p.content_rating,
             model: p.model,
+            model_instructions: p.model_instructions,
+            appearance: p.appearance,
+            speech_style: p.speech_style,
+            character_goals: p.character_goals,
+            post_history_instructions: p.post_history_instructions,
+            response_length_limit: p.response_length_limit,
+            temperature: p.temperature,
+            repeat_penalty: p.repeat_penalty,
+            instruction_template: p.instruction_template,
         }
     }
 }
@@ -391,6 +513,56 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::CREATED);
+        let body = body_json(res).await;
+        assert_eq!(body["model_instructions"], "");
+        assert_eq!(body["appearance"], "");
+        assert_eq!(body["speech_style"], "");
+        assert_eq!(body["character_goals"], "");
+        assert_eq!(body["post_history_instructions"], "");
+        assert_eq!(body["response_length_limit"], 1200);
+        assert_eq!(body["temperature"], 0.65);
+        assert_eq!(body["repeat_penalty"], 1.12);
+        assert_eq!(body["instruction_template"], "default");
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn create_wires_structured_fields(pool: SqlitePool) {
+        let app = make_app(pool);
+        let body = serde_json::json!({
+            "name": "Structured",
+            "model_instructions": "Stay in character",
+            "appearance": "Silver hair",
+            "speech_style": "Concise",
+            "character_goals": "Help the user",
+            "post_history_instructions": "Use recent context",
+            "response_length_limit": 900,
+            "temperature": 0.8,
+            "repeat_penalty": 1.2,
+            "instruction_template": "cinematic"
+        })
+        .to_string();
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/personas")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::CREATED);
+        let body = body_json(res).await;
+        assert_eq!(body["model_instructions"], "Stay in character");
+        assert_eq!(body["appearance"], "Silver hair");
+        assert_eq!(body["speech_style"], "Concise");
+        assert_eq!(body["character_goals"], "Help the user");
+        assert_eq!(body["post_history_instructions"], "Use recent context");
+        assert_eq!(body["response_length_limit"], 900);
+        assert_eq!(body["temperature"], 0.8);
+        assert_eq!(body["repeat_penalty"], 1.2);
+        assert_eq!(body["instruction_template"], "cinematic");
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
@@ -465,6 +637,15 @@ mod tests {
                 content_rating: ContentRating::Pg,
                 model: None,
                 raw_card: None,
+                model_instructions: String::new(),
+                appearance: String::new(),
+                speech_style: String::new(),
+                character_goals: String::new(),
+                post_history_instructions: String::new(),
+                response_length_limit: 1200,
+                temperature: 0.65,
+                repeat_penalty: 1.12,
+                instruction_template: "default".to_owned(),
             };
             repo.insert(&p).await.unwrap();
         }
@@ -498,6 +679,15 @@ mod tests {
             content_rating: ContentRating::Pg,
             model: None,
             raw_card: None,
+            model_instructions: String::new(),
+            appearance: String::new(),
+            speech_style: String::new(),
+            character_goals: String::new(),
+            post_history_instructions: String::new(),
+            response_length_limit: 1200,
+            temperature: 0.65,
+            repeat_penalty: 1.12,
+            instruction_template: "default".to_owned(),
         };
         let nsfw = Persona {
             id: Uuid::now_v7(),
@@ -512,6 +702,15 @@ mod tests {
             content_rating: ContentRating::Nsfw,
             model: None,
             raw_card: None,
+            model_instructions: String::new(),
+            appearance: String::new(),
+            speech_style: String::new(),
+            character_goals: String::new(),
+            post_history_instructions: String::new(),
+            response_length_limit: 1200,
+            temperature: 0.65,
+            repeat_penalty: 1.12,
+            instruction_template: "default".to_owned(),
         };
         repo.insert(&pg).await.unwrap();
         repo.insert(&nsfw).await.unwrap();
@@ -549,6 +748,15 @@ mod tests {
             content_rating: ContentRating::Pg,
             model: None,
             raw_card: None,
+            model_instructions: String::new(),
+            appearance: String::new(),
+            speech_style: String::new(),
+            character_goals: String::new(),
+            post_history_instructions: String::new(),
+            response_length_limit: 1200,
+            temperature: 0.65,
+            repeat_penalty: 1.12,
+            instruction_template: "default".to_owned(),
         };
         repo.insert(&p).await.unwrap();
         let app = make_app(pool);
@@ -599,6 +807,15 @@ mod tests {
             content_rating: ContentRating::Pg,
             model: None,
             raw_card: None,
+            model_instructions: String::new(),
+            appearance: String::new(),
+            speech_style: String::new(),
+            character_goals: String::new(),
+            post_history_instructions: String::new(),
+            response_length_limit: 1200,
+            temperature: 0.65,
+            repeat_penalty: 1.12,
+            instruction_template: "default".to_owned(),
         };
         repo.insert(&p).await.unwrap();
         let app = make_app(pool);
@@ -653,16 +870,38 @@ mod tests {
             content_rating: ContentRating::Pg,
             model: None,
             raw_card: None,
+            model_instructions: String::new(),
+            appearance: String::new(),
+            speech_style: String::new(),
+            character_goals: String::new(),
+            post_history_instructions: String::new(),
+            response_length_limit: 1200,
+            temperature: 0.65,
+            repeat_penalty: 1.12,
+            instruction_template: "default".to_owned(),
         };
         repo.insert(&p).await.unwrap();
         let app = make_app(pool);
+        let body = serde_json::json!({
+            "name": "Updated",
+            "model_instructions": "Stay in character",
+            "appearance": "Silver hair",
+            "speech_style": "Concise",
+            "character_goals": "Help the user",
+            "post_history_instructions": "Use recent context",
+            "response_length_limit": 900,
+            "temperature": 0.8,
+            "repeat_penalty": 1.2,
+            "instruction_template": "cinematic"
+        })
+        .to_string();
         let res = app
             .oneshot(
                 Request::builder()
                     .method("PATCH")
                     .uri(format!("/api/personas/{}", p.id))
                     .header("content-type", "application/json")
-                    .body(axum::body::Body::from(make_patch_body("Updated")))
+                    .body(axum::body::Body::from(body))
                     .unwrap(),
             )
             .await
@@ -670,6 +909,15 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
         let body = body_json(res).await;
         assert_eq!(body["name"], "Updated");
+        assert_eq!(body["model_instructions"], "Stay in character");
+        assert_eq!(body["appearance"], "Silver hair");
+        assert_eq!(body["speech_style"], "Concise");
+        assert_eq!(body["character_goals"], "Help the user");
+        assert_eq!(body["post_history_instructions"], "Use recent context");
+        assert_eq!(body["response_length_limit"], 900);
+        assert_eq!(body["temperature"], 0.8);
+        assert_eq!(body["repeat_penalty"], 1.2);
+        assert_eq!(body["instruction_template"], "cinematic");
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
@@ -724,10 +972,22 @@ mod tests {
                 content_rating: ContentRating::Pg,
                 model: None,
                 raw_card: None,
+                model_instructions: String::new(),
+                appearance: String::new(),
+                speech_style: String::new(),
+                character_goals: String::new(),
+                post_history_instructions: String::new(),
+                response_length_limit: 1200,
+                temperature: 0.65,
+                repeat_penalty: 1.12,
+                instruction_template: "default".to_owned(),
             };
             repo.insert(&p).await.unwrap();
         }
-        let bob_id = repo.find_all(None).await.unwrap()
+        let bob_id = repo
+            .find_all(None)
+            .await
+            .unwrap()
             .into_iter()
             .find(|p| p.name == "Bob")
             .unwrap()

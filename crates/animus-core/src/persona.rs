@@ -3,6 +3,11 @@ use core::fmt;
 use crate::{CharacterCardV2, ContentRating};
 use uuid::Uuid;
 
+pub const DEFAULT_RESPONSE_LENGTH_LIMIT: i64 = 1200;
+pub const DEFAULT_TEMPERATURE: f64 = 0.65;
+pub const DEFAULT_REPEAT_PENALTY: f64 = 1.12;
+pub const DEFAULT_INSTRUCTION_TEMPLATE: &str = "default";
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Persona {
     pub id: Uuid,
@@ -17,6 +22,24 @@ pub struct Persona {
     pub content_rating: ContentRating,
     pub model: Option<String>,
     pub raw_card: Option<String>,
+    /// Instructions for model behavior (e.g., "Stay in character", "Be concise").
+    pub model_instructions: String,
+    /// Physical appearance description of the character.
+    pub appearance: String,
+    /// Speech patterns and style (e.g., "Short sentences", "Formal tone").
+    pub speech_style: String,
+    /// Character's goals and motivations.
+    pub character_goals: String,
+    /// Instructions applied after conversation history (e.g., "Remember to be helpful").
+    pub post_history_instructions: String,
+    /// Maximum response length in tokens (default: 1200).
+    pub response_length_limit: i64,
+    /// LLM temperature parameter for controlling randomness (0.0-2.0, default: 0.65).
+    pub temperature: f64,
+    /// LLM repeat penalty to discourage repetition (default: 1.12).
+    pub repeat_penalty: f64,
+    /// Instruction template variant identifier (default: "default").
+    pub instruction_template: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -49,6 +72,15 @@ impl TryFrom<CharacterCardV2> for Persona {
             content_rating,
             model: None,
             raw_card: Some(raw_card),
+            model_instructions: String::new(),
+            appearance: String::new(),
+            speech_style: String::new(),
+            character_goals: String::new(),
+            post_history_instructions: String::new(),
+            response_length_limit: DEFAULT_RESPONSE_LENGTH_LIMIT,
+            temperature: DEFAULT_TEMPERATURE,
+            repeat_penalty: DEFAULT_REPEAT_PENALTY,
+            instruction_template: DEFAULT_INSTRUCTION_TEMPLATE.to_owned(),
         })
     }
 }

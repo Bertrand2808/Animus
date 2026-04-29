@@ -10,15 +10,13 @@ use animus_llm::ollama::OllamaClient;
 use anyhow::Context;
 use dirs::home_dir;
 use sqlx::sqlite::SqliteConnectOptions;
-use std::path::PathBuf;
 use std::str::FromStr;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // TODO: handle this warning
     let home = home_dir().context("failed to get home directory")?;
-    let log_dir = PathBuf::from("~/.animus/logs");
+    let log_dir = home.join(".animus/logs");
     if !log_dir.exists() {
         std::fs::create_dir_all(&log_dir).context("failed to create log directory")?;
     }

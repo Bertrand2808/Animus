@@ -15,6 +15,15 @@ export interface DraftState {
   scenario: string;
   firstMessage: string;
   messageExample: string;
+  modelInstructions: string;
+  appearance: string;
+  speechStyle: string;
+  characterGoals: string;
+  postHistoryInstructions: string;
+  responseLengthLimit: number;
+  temperature: number;
+  repeatPenalty: number;
+  instructionTemplate: string;
   useCustomModel: boolean;
   customModel: string;
   avatarDataUrl: string | undefined;
@@ -24,6 +33,10 @@ export interface DraftState {
 export interface PersonaFormFieldsProps {
   draft: DraftState;
   onChange: <K extends keyof DraftState>(key: K, val: DraftState[K]) => void;
+}
+
+function numericValue(value: number, fallback: number) {
+  return Number.isFinite(value) ? value : fallback;
 }
 
 export function PersonaFormFields({ draft, onChange }: PersonaFormFieldsProps) {
@@ -90,7 +103,65 @@ export function PersonaFormFields({ draft, onChange }: PersonaFormFieldsProps) {
         </div>
       </SectionCard>
 
-      <SectionCard step={3} title="Dialogue">
+      <SectionCard step={3} title="Character driving">
+        <div>
+          <FieldLabel label="Model instructions" htmlFor="persona-model-instructions" />
+          <textarea
+            id="persona-model-instructions"
+            rows={4}
+            value={draft.modelInstructions}
+            onChange={(e) => onChange("modelInstructions", e.target.value)}
+            placeholder="Behavioral rules the model should follow when playing this persona."
+            className={`${inputClass} resize-y leading-relaxed`}
+          />
+        </div>
+        <div>
+          <FieldLabel label="Appearance" htmlFor="persona-appearance" />
+          <textarea
+            id="persona-appearance"
+            rows={3}
+            value={draft.appearance}
+            onChange={(e) => onChange("appearance", e.target.value)}
+            placeholder="Visual details, clothing, posture, expressions, or other physical cues."
+            className={`${inputClass} resize-y leading-relaxed`}
+          />
+        </div>
+        <div>
+          <FieldLabel label="Speech style" htmlFor="persona-speech-style" />
+          <textarea
+            id="persona-speech-style"
+            rows={3}
+            value={draft.speechStyle}
+            onChange={(e) => onChange("speechStyle", e.target.value)}
+            placeholder="Tone, rhythm, vocabulary, punctuation habits, and recurring phrases."
+            className={`${inputClass} resize-y leading-relaxed`}
+          />
+        </div>
+        <div>
+          <FieldLabel label="Character goals" htmlFor="persona-character-goals" />
+          <textarea
+            id="persona-character-goals"
+            rows={3}
+            value={draft.characterGoals}
+            onChange={(e) => onChange("characterGoals", e.target.value)}
+            placeholder="What the character wants, avoids, protects, or tries to achieve."
+            className={`${inputClass} resize-y leading-relaxed`}
+          />
+        </div>
+        <div>
+          <FieldLabel label="Post-history instructions" htmlFor="persona-post-history" />
+          <textarea
+            id="persona-post-history"
+            rows={3}
+            value={draft.postHistoryInstructions}
+            onChange={(e) => onChange("postHistoryInstructions", e.target.value)}
+            placeholder="Instructions to apply after conversation history is included."
+            className={`${inputClass} resize-y leading-relaxed`}
+          />
+        </div>
+      </SectionCard>
+
+      <SectionCard step={4} title="Dialogue">
         <div>
           <FieldLabel
             label="First message"
@@ -139,7 +210,65 @@ export function PersonaFormFields({ draft, onChange }: PersonaFormFieldsProps) {
         </div>
       </SectionCard>
 
-      <SectionCard step={4} title="Model override" hint="Optional">
+      <SectionCard step={5} title="Generation settings">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div>
+            <FieldLabel label="Response limit" htmlFor="persona-response-limit" hint="characters" />
+            <input
+              id="persona-response-limit"
+              type="number"
+              min={1}
+              step={1}
+              value={draft.responseLengthLimit}
+              onChange={(e) =>
+                onChange("responseLengthLimit", numericValue(e.target.valueAsNumber, 1200))
+              }
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <FieldLabel label="Temperature" htmlFor="persona-temperature" />
+            <input
+              id="persona-temperature"
+              type="number"
+              min={0}
+              max={2}
+              step={0.01}
+              value={draft.temperature}
+              onChange={(e) =>
+                onChange("temperature", numericValue(e.target.valueAsNumber, 0.65))
+              }
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <FieldLabel label="Repeat penalty" htmlFor="persona-repeat-penalty" />
+            <input
+              id="persona-repeat-penalty"
+              type="number"
+              min={0}
+              step={0.01}
+              value={draft.repeatPenalty}
+              onChange={(e) =>
+                onChange("repeatPenalty", numericValue(e.target.valueAsNumber, 1.12))
+              }
+              className={inputClass}
+            />
+          </div>
+        </div>
+        <div>
+          <FieldLabel label="Instruction template" htmlFor="persona-instruction-template" />
+          <input
+            id="persona-instruction-template"
+            value={draft.instructionTemplate}
+            onChange={(e) => onChange("instructionTemplate", e.target.value)}
+            placeholder="default"
+            className={`${inputClass} font-mono text-[13.5px]`}
+          />
+        </div>
+      </SectionCard>
+
+      <SectionCard step={6} title="Model override" hint="Optional">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="text-[13px] font-medium text-[#2C2C2C]">Use custom model</div>

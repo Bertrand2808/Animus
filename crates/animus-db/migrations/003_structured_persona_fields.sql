@@ -1,0 +1,9 @@
+ALTER TABLE personas ADD COLUMN model_instructions TEXT NOT NULL DEFAULT '';
+ALTER TABLE personas ADD COLUMN appearance TEXT NOT NULL DEFAULT '';
+ALTER TABLE personas ADD COLUMN speech_style TEXT NOT NULL DEFAULT '';
+ALTER TABLE personas ADD COLUMN character_goals TEXT NOT NULL DEFAULT '';
+ALTER TABLE personas ADD COLUMN post_history_instructions TEXT NOT NULL DEFAULT '';
+ALTER TABLE personas ADD COLUMN response_length_limit INTEGER NOT NULL DEFAULT 1200;
+ALTER TABLE personas ADD COLUMN temperature REAL NOT NULL DEFAULT 0.65;
+ALTER TABLE personas ADD COLUMN repeat_penalty REAL NOT NULL DEFAULT 1.12;
+ALTER TABLE personas ADD COLUMN instruction_template TEXT NOT NULL DEFAULT 'default';

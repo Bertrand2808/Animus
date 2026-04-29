@@ -10,6 +10,35 @@ pub struct OllamaMessage {
     pub content: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PromptTraceFields {
+    message_count: usize,
+    has_summary: bool,
+    has_model_instructions: bool,
+    has_appearance: bool,
+    has_speech_style: bool,
+    has_character_goals: bool,
+    has_post_history_instructions: bool,
+    instruction_template: String,
+    response_length_limit: i64,
+}
+
+impl PromptTraceFields {
+    fn from_inputs(persona: &Persona, messages: &[Message], has_summary: bool) -> Self {
+        Self {
+            message_count: messages.len(),
+            has_summary,
+            has_model_instructions: !persona.model_instructions.trim().is_empty(),
+            has_appearance: !persona.appearance.trim().is_empty(),
+            has_speech_style: !persona.speech_style.trim().is_empty(),
+            has_character_goals: !persona.character_goals.trim().is_empty(),
+            has_post_history_instructions: !persona.post_history_instructions.trim().is_empty(),
+            instruction_template: persona.instruction_template.clone(),
+            response_length_limit: persona.response_length_limit,
+        }
+    }
+}
+
 impl OllamaMessage {
     pub fn new(role: Role, content: impl Into<String>) -> Self {
         OllamaMessage {
@@ -48,6 +77,25 @@ pub fn build_prompt(
     messages: &[Message],
     summary: Option<&Summary>,
 ) -> Vec<OllamaMessage> {
+    let trace = PromptTraceFields::from_inputs(persona, messages, summary.is_some());
+    tracing::debug!(
+        target: "ollama_prompt",
+        persona_id = %persona.id,
+        persona_name = %persona.name,
+        message_count = trace.message_count,
+        has_summary = trace.has_summary,
+        has_model_instructions = trace.has_model_instructions,
+        has_appearance = trace.has_appearance,
+        has_speech_style = trace.has_speech_style,
+        has_character_goals = trace.has_character_goals,
+        has_post_history_instructions = trace.has_post_history_instructions,
+        response_length_limit = trace.response_length_limit,
+        temperature = persona.temperature,
+        repeat_penalty = persona.repeat_penalty,
+        instruction_template = %trace.instruction_template,
+        "building prompt for ollama"
+    );
+
     let mut blocks = Vec::new();
 
     // Bloc 1 : Principal system
@@ -104,6 +152,14 @@ pub fn build_prompt(
         });
     }
 
+    tracing::debug!(
+        target: "ollama_prompt",
+        persona_id = %persona.id,
+        block_count = blocks.len(),
+        first_message_included = should_include_first_message(messages),
+        "prompt built for ollama"
+    );
+
     blocks
 }
 
@@ -145,6 +201,15 @@ mod tests {
             content_rating: ContentRating::Pg,
             model: Some("Test".to_string()),
             raw_card: Some("Test".to_string()),
+            model_instructions: String::new(),
+            appearance: String::new(),
+            speech_style: String::new(),
+            character_goals: String::new(),
+            post_history_instructions: String::new(),
+            response_length_limit: 1200,
+            temperature: 0.65,
+            repeat_penalty: 1.12,
+            instruction_template: "default".to_owned(),
         }
     }
 
@@ -170,6 +235,33 @@ mod tests {
             messages.push(create_test_message(role, &format!("Message {}", i + 1)));
         }
         messages
+    }
+
+    #[test]
+    fn prompt_trace_fields_report_structured_field_presence() {
+        let mut persona = create_test_persona();
+        persona.model_instructions = "Stay in character".to_owned();
+        persona.speech_style = "Short sentences".to_owned();
+        persona.response_length_limit = 900;
+        persona.instruction_template = "cinematic".to_owned();
+        let messages = create_messages(3, false);
+
+        let fields = PromptTraceFields::from_inputs(&persona, &messages, true);
+
+        assert_eq!(
+            fields,
+            PromptTraceFields {
+                message_count: 3,
+                has_summary: true,
+                has_model_instructions: true,
+                has_appearance: false,
+                has_speech_style: true,
+                has_character_goals: false,
+                has_post_history_instructions: false,
+                instruction_template: "cinematic".to_owned(),
+                response_length_limit: 900,
+            }
+        );
     }
 
     // Test 1 : nouvelle conversation (1 msg assistant, 0 user)
