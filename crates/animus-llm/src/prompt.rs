@@ -1,8 +1,22 @@
+use std::borrow::Cow;
+
 use animus_core::{
-    ContentRating, Persona,
     persona::{Message, Role, Summary},
+    Persona,
 };
 use serde::{Deserialize, Serialize};
+
+const DEFAULT_TEMPLATE: &str = "Write as {{char}} in a character-driven roleplay scene.\n\
+Use vivid physical actions in *asterisks* and spoken dialogue in \"quotes\".\n\
+Stay in {{char}}'s perspective and preserve {{char}}'s personality, goals, speech patterns, and boundaries.\n\
+Drive the scene proactively through concrete actions, choices, tension, and sensory detail.\n\
+Keep the response under {{response_length_limit}} characters.";
+
+const NSFW_TEMPLATE: &str = "Write as {{char}} in a mature, intimate roleplay scene.\n\
+Use vivid physical actions in *asterisks* and spoken dialogue in \"quotes\".\n\
+Stay in {{char}}'s perspective and preserve {{char}}'s personality, desires, goals, speech patterns, and boundaries.\n\
+Build tension through pacing, sensory detail, consent-aware reactions, and proactive character choices.\n\
+Keep the response under {{response_length_limit}} characters.";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OllamaMessage {
@@ -57,6 +71,110 @@ impl OllamaMessage {
     }
 }
 
+/// Replaces all known prompt placeholders with their resolved values.
+pub fn resolve_placeholders(text: &str, char_name: &str, user_name: &str, limit: i64) -> String {
+    let words_approx = limit / 4;
+    text.replace("{{char}}", char_name)
+        .replace("{{user}}", user_name)
+        .replace("{{response_length_limit}}", &limit.to_string())
+        .replace(
+            "{{response_length_example}}",
+            &format!("about {} words", words_approx),
+        )
+}
+
+/// Returns the raw (unresolved) template text for the persona.
+///
+/// - `"default"` → DEFAULT_TEMPLATE
+/// - `"nsfw"` → NSFW_TEMPLATE
+/// - `"custom"` or any unknown value → persona's `model_instructions`
+///
+/// Unknown values map to `model_instructions` so that stored custom text is never silently
+/// dropped when an unrecognised template name reaches the prompt builder.
+fn select_template(persona: &Persona) -> Cow<'_, str> {
+    match persona.instruction_template.as_str() {
+        "default" => Cow::Borrowed(DEFAULT_TEMPLATE),
+        "nsfw" => Cow::Borrowed(NSFW_TEMPLATE),
+        _ => Cow::Borrowed(persona.model_instructions.as_str()),
+    }
+}
+
+/// Builds the main structured system block from persona fields.
+fn build_system_block(persona: &Persona, user_name: &str) -> String {
+    let char_name = &persona.name;
+    let limit = persona.response_length_limit;
+    let mut sections: Vec<String> = Vec::with_capacity(8);
+
+    // # Role
+    sections.push(format!("# Role\nYou are {char_name}."));
+
+    // # Model Instructions — skip if template resolves to empty (e.g. custom + empty model_instructions)
+    let template = select_template(persona);
+    if !template.trim().is_empty() {
+        let resolved = resolve_placeholders(&template, char_name, user_name, limit);
+        sections.push(format!("# Model Instructions\n{resolved}"));
+    }
+
+    // Helper: resolve + return Some only when non-empty
+    let resolve = |text: &str| -> Option<String> {
+        let s = text.trim();
+        if s.is_empty() {
+            None
+        } else {
+            Some(resolve_placeholders(s, char_name, user_name, limit))
+        }
+    };
+
+    // # Character — only include non-empty sub-fields
+    {
+        let mut parts: Vec<String> = Vec::new();
+        if let Some(v) = resolve(&persona.appearance) {
+            parts.push(format!("Appearance:\n{v}"));
+        }
+        if let Some(v) = resolve(&persona.description) {
+            parts.push(format!("Description:\n{v}"));
+        }
+        if let Some(v) = resolve(&persona.personality) {
+            parts.push(format!("Personality:\n{v}"));
+        }
+        if let Some(v) = resolve(&persona.speech_style) {
+            parts.push(format!("Speech Style:\n{v}"));
+        }
+        if !parts.is_empty() {
+            sections.push(format!("# Character\n{}", parts.join("\n\n")));
+        }
+    }
+
+    // # Scenario
+    if let Some(v) = resolve(&persona.scenario) {
+        sections.push(format!("# Scenario\n{v}"));
+    }
+
+    // # Character Goals
+    if let Some(v) = resolve(&persona.character_goals) {
+        sections.push(format!("# Character Goals\n{v}"));
+    }
+
+    // # Style Examples
+    if let Some(v) = resolve(&persona.message_example) {
+        sections.push(format!(
+            "# Style Examples\nUse these as style references, not current conversation events.\n{v}"
+        ));
+    }
+
+    // # Response Contract — always present
+    let words_approx = limit / 4;
+    sections.push(format!(
+        "# Response Contract\nKeep the response under {limit} characters (about {words_approx} words)."
+    ));
+
+    sections.join("\n\n")
+}
+
+fn should_include_first_message(messages: &[Message]) -> bool {
+    messages.len() == 1 && messages[0].role == Role::Assistant
+}
+
 // TODO : Add tests for edge cases: empty messages, single message with summary, message count ≤10.
 /*
 Risk Assessment
@@ -76,6 +194,7 @@ pub fn build_prompt(
     persona: &Persona,
     messages: &[Message],
     summary: Option<&Summary>,
+    user_name: &str,
 ) -> Vec<OllamaMessage> {
     let trace = PromptTraceFields::from_inputs(persona, messages, summary.is_some());
     tracing::debug!(
@@ -98,20 +217,13 @@ pub fn build_prompt(
 
     let mut blocks = Vec::new();
 
-    // Bloc 1 : Principal system
+    // Block 1: main system message with structured sections
     blocks.push(OllamaMessage {
         role: "system".to_string(),
-        content: format!(
-            "You are {}. \n\nDescription: {}\n\nPersonality: {}\n\nScenario: {}\n\n{}",
-            persona.name,
-            persona.description,
-            persona.personality,
-            persona.scenario,
-            nsfw_section_if_needed(persona.content_rating)
-        ),
+        content: build_system_block(persona, user_name),
     });
 
-    // Bloc 2 : Summary si présent
+    // Block 2: summary
     if let Some(summary) = summary {
         blocks.push(OllamaMessage {
             role: "system".to_string(),
@@ -119,7 +231,7 @@ pub fn build_prompt(
         });
     }
 
-    // Bloc 3 : premier message si applicable
+    // Block 3: first message (new conversation — single assistant message)
     if should_include_first_message(messages) {
         blocks.push(OllamaMessage {
             role: "assistant".to_string(),
@@ -127,9 +239,8 @@ pub fn build_prompt(
         });
     }
 
-    // Bloc 4 : historique (derniers 10)
-    let hitory_messages = if messages.len() > 1 {
-        // Skip premier message si c'était l'assistant (déjà dans le bloc 2)
+    // Block 4: conversation history (last 10, skipping first message if in block 3)
+    let history_messages = if messages.len() > 1 {
         let start_index = if should_include_first_message(messages) {
             1
         } else {
@@ -145,10 +256,24 @@ pub fn build_prompt(
         vec![]
     };
 
-    for msg in hitory_messages {
+    for msg in history_messages {
         blocks.push(OllamaMessage {
             role: msg.role.to_string(),
             content: msg.content.clone(),
+        });
+    }
+
+    // Block 5: post-history instructions (optional — injected after history)
+    if !persona.post_history_instructions.trim().is_empty() {
+        let resolved = resolve_placeholders(
+            &persona.post_history_instructions,
+            &persona.name,
+            user_name,
+            persona.response_length_limit,
+        );
+        blocks.push(OllamaMessage {
+            role: "system".to_string(),
+            content: resolved,
         });
     }
 
@@ -157,25 +282,11 @@ pub fn build_prompt(
         persona_id = %persona.id,
         block_count = blocks.len(),
         first_message_included = should_include_first_message(messages),
+        has_post_history = !persona.post_history_instructions.trim().is_empty(),
         "prompt built for ollama"
     );
 
     blocks
-}
-
-// Helper vérifier si on inclut le premier message
-fn should_include_first_message(messages: &[Message]) -> bool {
-    messages.len() == 1 && messages[0].role == Role::Assistant
-}
-
-// Helper section NSFW si rating = Nsfw
-fn nsfw_section_if_needed(rating: ContentRating) -> String {
-    match rating {
-        ContentRating::Nsfw => {
-            "NSFW Content Warning: This character may discuss adult content.".to_string()
-        }
-        _ => String::new(),
-    }
 }
 
 #[cfg(test)]
@@ -223,7 +334,6 @@ mod tests {
         }
     }
 
-    // Helper function to create a vector of messages
     fn create_messages(count: usize, start_with_assistant: bool) -> Vec<Message> {
         let mut messages: Vec<Message> = Vec::new();
         for i in 0..count {
@@ -236,6 +346,8 @@ mod tests {
         }
         messages
     }
+
+    // --- PromptTraceFields ---
 
     #[test]
     fn prompt_trace_fields_report_structured_field_presence() {
@@ -264,7 +376,177 @@ mod tests {
         );
     }
 
-    // Test 1 : nouvelle conversation (1 msg assistant, 0 user)
+    // --- resolve_placeholders ---
+
+    #[test]
+    fn resolve_placeholders_replaces_all_known_tokens() {
+        let result = resolve_placeholders(
+            "Hello {{char}}, I am {{user}}. Limit: {{response_length_limit}}. Example: {{response_length_example}}.",
+            "Aria",
+            "Bertrand",
+            1200,
+        );
+        assert_eq!(
+            result,
+            "Hello Aria, I am Bertrand. Limit: 1200. Example: about 300 words."
+        );
+    }
+
+    #[test]
+    fn resolve_placeholders_response_length_example_is_human_readable() {
+        let result = resolve_placeholders("{{response_length_example}}", "X", "Y", 800);
+        assert_eq!(result, "about 200 words");
+    }
+
+    // --- select_template ---
+
+    #[test]
+    fn select_template_default_returns_default_template() {
+        let mut persona = create_test_persona();
+        persona.instruction_template = "default".to_owned();
+        persona.content_rating = ContentRating::Nsfw; // content_rating must NOT affect selection
+        assert_eq!(select_template(&persona).as_ref(), DEFAULT_TEMPLATE);
+    }
+
+    #[test]
+    fn select_template_nsfw_returns_nsfw_template() {
+        let mut persona = create_test_persona();
+        persona.instruction_template = "nsfw".to_owned();
+        assert_eq!(select_template(&persona).as_ref(), NSFW_TEMPLATE);
+    }
+
+    #[test]
+    fn select_template_custom_returns_model_instructions() {
+        let mut persona = create_test_persona();
+        persona.instruction_template = "custom".to_owned();
+        persona.model_instructions = "My custom instructions.".to_owned();
+        assert_eq!(select_template(&persona).as_ref(), "My custom instructions.");
+    }
+
+    #[test]
+    fn select_template_unknown_value_falls_back_to_model_instructions() {
+        let mut persona = create_test_persona();
+        persona.instruction_template = "cinematic".to_owned();
+        persona.model_instructions = "Cinematic custom instructions.".to_owned();
+        assert_eq!(
+            select_template(&persona).as_ref(),
+            "Cinematic custom instructions.",
+            "unknown instruction_template must use model_instructions, not silently drop them"
+        );
+    }
+
+    #[test]
+    fn custom_template_not_overridden_by_nsfw_persona() {
+        let mut persona = create_test_persona();
+        persona.content_rating = ContentRating::Nsfw;
+        persona.instruction_template = "custom".to_owned();
+        persona.model_instructions = "Custom style only.".to_owned();
+
+        let system = build_system_block(&persona, "User");
+
+        assert!(
+            system.contains("Custom style only."),
+            "custom model_instructions should be used"
+        );
+        assert!(
+            !system.contains("mature, intimate"),
+            "NSFW template must not be injected when instruction_template=custom"
+        );
+    }
+
+    // --- build_system_block ---
+
+    #[test]
+    fn system_block_has_required_sections() {
+        let persona = create_test_persona();
+        let block = build_system_block(&persona, "User");
+
+        assert!(block.contains("# Role"), "missing # Role");
+        assert!(block.contains("# Model Instructions"), "missing # Model Instructions");
+        assert!(block.contains("# Response Contract"), "missing # Response Contract");
+    }
+
+    #[test]
+    fn system_block_omits_empty_optional_sections() {
+        let mut persona = create_test_persona();
+        // All optional fields empty
+        persona.appearance = String::new();
+        persona.description = String::new();
+        persona.personality = String::new();
+        persona.speech_style = String::new();
+        persona.scenario = String::new();
+        persona.character_goals = String::new();
+        persona.message_example = String::new();
+
+        let block = build_system_block(&persona, "User");
+
+        assert!(!block.contains("# Character"), "# Character should be omitted when all sub-fields empty");
+        assert!(!block.contains("# Scenario"), "# Scenario should be omitted when empty");
+        assert!(!block.contains("# Character Goals"), "# Character Goals should be omitted when empty");
+        assert!(!block.contains("# Style Examples"), "# Style Examples should be omitted when empty");
+    }
+
+    #[test]
+    fn system_block_includes_optional_sections_when_populated() {
+        let mut persona = create_test_persona();
+        persona.appearance = "Tall, dark hair.".to_owned();
+        persona.speech_style = "Terse.".to_owned();
+        persona.scenario = "A rainy city.".to_owned();
+        persona.character_goals = "Protect the guild.".to_owned();
+        persona.message_example = "Example reply.".to_owned();
+
+        let block = build_system_block(&persona, "User");
+
+        assert!(block.contains("# Character"));
+        assert!(block.contains("Appearance:"));
+        assert!(block.contains("Speech Style:"));
+        assert!(block.contains("# Scenario"));
+        assert!(block.contains("# Character Goals"));
+        assert!(block.contains("# Style Examples"));
+        assert!(block.contains("Use these as style references"));
+    }
+
+    #[test]
+    fn system_block_no_unresolved_placeholders() {
+        let mut persona = create_test_persona();
+        persona.description = "{{char}} is mysterious.".to_owned();
+        persona.character_goals = "Please {{user}} always.".to_owned();
+
+        let block = build_system_block(&persona, "Alice");
+
+        assert!(
+            !block.contains("{{"),
+            "unresolved placeholder found in system block: {block}"
+        );
+    }
+
+    #[test]
+    fn system_block_resolves_char_and_user_placeholders() {
+        let mut persona = create_test_persona();
+        persona.name = "Aria".to_owned();
+
+        let block = build_system_block(&persona, "Bertrand");
+
+        assert!(block.contains("You are Aria."));
+        assert!(block.contains("Aria")); // from default template
+        assert!(!block.contains("{{char}}"));
+        assert!(!block.contains("{{user}}"));
+    }
+
+    #[test]
+    fn system_block_response_contract_uses_limit() {
+        let mut persona = create_test_persona();
+        persona.response_length_limit = 800;
+
+        let block = build_system_block(&persona, "User");
+
+        assert!(block.contains("# Response Contract"));
+        assert!(block.contains("800 characters"));
+        assert!(block.contains("about 200 words"));
+    }
+
+    // --- build_prompt (existing tests updated for user_name) ---
+
     #[test]
     fn test_build_prompt_new_conversation() {
         let persona = create_test_persona();
@@ -272,51 +554,32 @@ mod tests {
             Role::Assistant,
             "Hello, how are you today ?",
         )];
-        let result = build_prompt(&persona, &messages, None);
+        let result = build_prompt(&persona, &messages, None, "User");
 
-        assert_eq!(
-            result.len(),
-            2,
-            "Nouvelle conversation -> 2 messages (system + 1er msg)"
-        );
+        assert_eq!(result.len(), 2, "new conversation -> system + first message");
 
-        // 1. System principal
         assert_eq!(result[0].role, "system");
+        assert!(result[0].content.contains("# Role"));
         assert!(result[0].content.contains("TestPersona"));
-        assert!(result[0].content.contains("Test description"));
-        assert!(result[0].content.contains("Friendly and helpful"));
 
-        // 2. Premier message assistant
         assert_eq!(result[1].role, "assistant");
         assert_eq!(result[1].content, "Hello, how are you today ?");
     }
 
-    // Test 2 : conversation existante (ne pas dupliquer le 1er message)
     #[test]
     fn test_build_prompt_existing_conversation() {
         let persona = create_test_persona();
-        // 12 messages, commence par un assistant
         let messages = create_messages(12, true);
-        let result = build_prompt(&persona, &messages, None);
+        let result = build_prompt(&persona, &messages, None, "User");
 
-        // On doit avoir : 1 system + 10 derniers message = 11 messages
-        assert_eq!(
-            result.len(),
-            11,
-            "Doit contenir le system + les 10 derniers messages"
-        );
+        assert_eq!(result.len(), 11, "system + 10 last messages");
 
-        // Premier élément = system
         assert_eq!(result[0].role, "system");
 
-        // Les 10 suivant = les derniers messages de l'input (pas les premiers)
-        // On ne doit donc pas avoir le message n°2
         let history = &result[1..];
-        // Vérifier que c'est bien les 10 derniers
         assert_eq!(history[0].content, "Message 3");
         assert_eq!(history[9].content, "Message 12");
 
-        // vérifier l'ordre chronologique
         for (i, msg) in history.iter().enumerate() {
             assert_eq!(
                 msg.role,
@@ -329,7 +592,6 @@ mod tests {
         }
     }
 
-    // Test 3 : summary après system
     #[test]
     fn test_build_prompt_with_summary() {
         let persona = create_test_persona();
@@ -343,32 +605,21 @@ mod tests {
             created_at: 0,
         };
 
-        let result = build_prompt(&persona, &messages, Some(&summary));
+        let result = build_prompt(&persona, &messages, Some(&summary), "User");
 
-        // Pour une nouvelle conversation AVEC summary :
-        // -> system principal + system summary + first_message assistant
         assert_eq!(result.len(), 3);
-        assert_eq!(result[0].role, "system"); // principal
+        assert_eq!(result[0].role, "system"); // main system block
         assert_eq!(result[1].role, "system"); // summary
         assert_eq!(result[2].role, "assistant"); // first message
 
-        // Vérifier le contenu
-        assert!(
-            result[1]
-                .content
-                .contains("Summary of earlier conversation:")
-        );
-        assert!(
-            result[1]
-                .content
-                .contains("Résumé de la conversation précédente.")
-        );
+        assert!(result[1].content.contains("Summary of earlier conversation:"));
+        assert!(result[1].content.contains("Résumé de la conversation précédente."));
     }
 
     #[test]
     fn build_test_prompt_existing_conversation_with_summary() {
         let persona = create_test_persona();
-        let messages = create_messages(8, false); // conversation existante
+        let messages = create_messages(8, false);
 
         let summary = Summary {
             id: Uuid::now_v7(),
@@ -379,12 +630,88 @@ mod tests {
             created_at: 0,
         };
 
-        let result = build_prompt(&persona, &messages, Some(&summary));
+        let result = build_prompt(&persona, &messages, Some(&summary), "User");
 
-        // system + summary + 8 messages = 10
-        assert_eq!(result.len(), 10);
+        assert_eq!(result.len(), 10); // system + summary + 8 messages
         assert_eq!(result[0].role, "system");
         assert_eq!(result[1].role, "system");
-        assert_eq!(result[2].role, "user"); // premier du historique (ici user car false)
+        assert_eq!(result[2].role, "user");
+    }
+
+    // --- post-history instructions ---
+
+    #[test]
+    fn build_prompt_appends_post_history_block_when_set() {
+        let mut persona = create_test_persona();
+        persona.post_history_instructions = "Stay focused on the scene, {{char}}.".to_owned();
+        let messages = create_messages(4, false);
+
+        let result = build_prompt(&persona, &messages, None, "User");
+
+        let last = result.last().expect("prompt must not be empty");
+        assert_eq!(last.role, "system");
+        assert!(
+            last.content.contains("Stay focused on the scene, TestPersona."),
+            "post_history_instructions should be resolved and appended: {:?}",
+            last.content
+        );
+    }
+
+    #[test]
+    fn build_prompt_no_post_history_block_when_empty() {
+        let persona = create_test_persona(); // post_history_instructions is empty
+        let messages = create_messages(4, false);
+
+        let result = build_prompt(&persona, &messages, None, "User");
+
+        // Last block must be a user/assistant message, not a system post-history block
+        let last = result.last().unwrap();
+        assert_ne!(
+            last.role, "system",
+            "no extra system block expected when post_history_instructions is empty"
+        );
+    }
+
+    // --- no unresolved placeholders end-to-end ---
+
+    #[test]
+    fn build_prompt_leaves_no_unresolved_placeholders() {
+        let mut persona = create_test_persona();
+        persona.description = "{{char}} is a noble warrior.".to_owned();
+        persona.character_goals = "Serve {{user}} well.".to_owned();
+        persona.post_history_instructions = "Remember: {{char}} never retreats.".to_owned();
+
+        let messages = create_messages(4, false);
+        let result = build_prompt(&persona, &messages, None, "Bertrand");
+
+        for block in &result {
+            assert!(
+                !block.content.contains("{{"),
+                "unresolved placeholder in block role={}: {:?}",
+                block.role,
+                block.content
+            );
+        }
+    }
+
+    // --- NSFW template ---
+
+    #[test]
+    fn build_prompt_uses_nsfw_template_when_instruction_template_is_nsfw() {
+        let mut persona = create_test_persona();
+        persona.instruction_template = "nsfw".to_owned();
+        let messages = create_messages(2, false);
+
+        let result = build_prompt(&persona, &messages, None, "User");
+
+        let system = &result[0].content;
+        assert!(
+            system.contains("mature, intimate"),
+            "NSFW template not found in system block: {system}"
+        );
+        assert!(
+            !system.contains("character-driven roleplay"),
+            "default template must not appear when nsfw is selected"
+        );
     }
 }

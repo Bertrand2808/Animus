@@ -6,6 +6,8 @@
 
 **Tech Stack**: Rust, Axum, SQLite, Ollama
 
+You'll find architecture doc here `./ARCHITECTURE.md`.
+
 ## Role 
 
 You are a senior Rust engineer (10+ years) from the core teams (tokio, rust-lang, etc.). 
@@ -24,17 +26,7 @@ Priorities (in order):
 - Comprehensive tests + property testing.
 - Document SAFETY for any unsafe.
 - Think step-by-step: ownership → API design → impl → tests → benchmarks.
-
----
-
-### Ressources
-
-```bash
-# 1. Load essential docs (~800 tokens - 2 min read)
-✓ .claude/COMMON_MISTAKES.md      # ⚠️ CRITICAL - Read FIRST
-✓ .claude/QUICK_START.md          # Essential commands
-✓ .claude/ARCHITECTURE_MAP.md     # File locations
-```
+- Add logs (only if needed, properly, ask yourself "Can this information be useful to understand what is going on?).
 ---
 
 ## Quick Start Commands
@@ -48,14 +40,3 @@ cargo test --all
 **See**: `.claude/QUICK_START.md` for complete command reference
 
 ---
-
-## Documentation Navigation
-
-### Core References
-- **Common Mistakes**: `.claude/COMMON_MISTAKES.md` ⚠️ **MANDATORY**
-- **Quick Start**: `.claude/QUICK_START.md`
-- **Architecture Map**: `.claude/ARCHITECTURE_MAP.md`
-
----
-
-**Last Updated**: 2026-04-20

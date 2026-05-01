@@ -31,20 +31,34 @@ impl SettingsRepo {
         Ok(())
     }
 
-    /// Fetch the singleton settings row.
+    /// Fetch the singleton settings row, returning built-in defaults when not yet initialised.
     pub async fn get(&self) -> Result<AppSettings, sqlx::Error> {
-        let row = sqlx::query!(
+        let opt = sqlx::query!(
             r#"SELECT user_name AS "user_name!", default_model AS "default_model!" FROM app_settings WHERE id = 1"#
         )
-        .fetch_one(&self.pool)
+        .fetch_optional(&self.pool)
         .await?;
 
-        tracing::debug!(target: "settings", user_name = %row.user_name, "settings fetched");
+        let settings = match opt {
+            Some(row) => {
+                tracing::debug!(target: "settings", user_name = %row.user_name, "settings fetched");
+                AppSettings {
+                    user_name: row.user_name,
+                    default_model: row.default_model,
+                }
+            }
+            None => {
+                // init_defaults has not been called yet; callers that depend on default_model
+                // will receive an empty string until the row is seeded.
+                tracing::warn!(target: "settings", "settings row absent — using built-in defaults; call init_defaults at startup");
+                AppSettings {
+                    user_name: "User".to_owned(),
+                    default_model: String::new(),
+                }
+            }
+        };
 
-        Ok(AppSettings {
-            user_name: row.user_name,
-            default_model: row.default_model,
-        })
+        Ok(settings)
     }
 
     /// Overwrite the singleton settings row entirely.
