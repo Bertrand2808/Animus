@@ -4,6 +4,7 @@ use futures::StreamExt;
 use futures::TryStreamExt;
 use reqwest::Client;
 use serde::Deserialize;
+use serde::Serialize;
 use std::time::Duration;
 use tokio::io::AsyncBufReadExt;
 use tokio_util::io::StreamReader;
@@ -52,12 +53,14 @@ impl OllamaClient {
         &self,
         model: &str,
         messages: Vec<OllamaMessage>,
+        options: SamplingOptions,
     ) -> Result<String, OllamaError> {
         let prompt = messages_to_prompt(&messages);
 
         let request_body = serde_json::json!({
             "model": model,
             "prompt": prompt,
+            "options": options,
             "stream": false,
         });
 
@@ -103,10 +106,12 @@ impl OllamaClient {
         &self,
         model: &str,
         messages: Vec<OllamaMessage>,
+        options: SamplingOptions,
     ) -> impl Stream<Item = Result<StreamChunk, OllamaError>> {
         let request_body = serde_json::json!({
             "model": model,
             "messages": messages,
+            "options": options,
             "stream": true,
         });
         let url = format!("{}/api/chat", &self.base_url);
@@ -189,6 +194,19 @@ fn messages_to_prompt(messages: &[OllamaMessage]) -> String {
         .join("\n\n")
 }
 
+/// Sampling Options Struct
+#[derive(Serialize, Debug)]
+pub struct SamplingOptions {
+    pub temperature: f64,
+    pub repeat_penalty: f64,
+    pub num_predict: u32,
+}
+
+/// Helper function that calculate the number limit of caracter the model should returns
+pub fn num_predict_for_char_limits(char_limit: u32) -> u32 {
+    (char_limit as f64 / 4.0).ceil() as u32 + 50
+}
+
 #[cfg(test)]
 mod tests {
     // TODO : Error test coverage — Consider adding mock-based tests later (requires test harness) or document why real Ollama is required.
@@ -216,7 +234,13 @@ mod tests {
             content: "Hi".to_string(),
         }];
 
-        match client.complete("gemma4", messages).await {
+        let options = SamplingOptions {
+            temperature: 1.25,
+            repeat_penalty: 1.0,
+            num_predict: 250,
+        };
+
+        match client.complete("gemma4", messages, options).await {
             Ok(response) => {
                 assert!(!response.is_empty());
                 // Ne pas vérifier contenu exact (LLM aléatoire)
@@ -242,10 +266,15 @@ mod tests {
             role: "user".to_string(),
             content: "Hi hello".to_string(),
         }];
+        let options = SamplingOptions {
+            temperature: 1.25,
+            repeat_penalty: 1.0,
+            num_predict: 250,
+        };
         let mut collected_tokens = String::new();
         let mut eval_count = 0u32;
         let model = "gemma4";
-        let stream = client.stream(model, messages);
+        let stream = client.stream(model, messages, options);
 
         match stream.try_collect::<Vec<_>>().await {
             Ok(chunks) => {
@@ -261,5 +290,11 @@ mod tests {
         println!("Réponse complète : {}", collected_tokens);
         assert!(!collected_tokens.trim().is_empty());
         println!("Eval Count : {}", eval_count);
+    }
+
+    #[test]
+    fn num_predict_estimation() {
+        assert_eq!(num_predict_for_char_limits(1200), 350); // 300.00 ceil = 300 + 50
+        assert_eq!(num_predict_for_char_limits(901), 276); // 225.25 ceil = 226 + 50
     }
 }

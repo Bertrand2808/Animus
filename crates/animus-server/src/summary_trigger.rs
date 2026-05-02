@@ -1,5 +1,7 @@
-use animus_core::persona::Summary;
-use animus_llm::OllamaMessage;
+use animus_core::persona::{
+    Summary, DEFAULT_REPEAT_PENALTY, DEFAULT_RESPONSE_LENGTH_LIMIT, DEFAULT_TEMPERATURE,
+};
+use animus_llm::{num_predict_for_char_limits, OllamaMessage, SamplingOptions};
 use uuid::Uuid;
 
 use crate::state::AppState;
@@ -64,6 +66,11 @@ pub async fn evaluate_summary_trigger(conv_id: Uuid, state: AppState) {
         prompt.push('\n');
     }
 
+    let options = SamplingOptions {
+        temperature: DEFAULT_TEMPERATURE,
+        repeat_penalty: DEFAULT_REPEAT_PENALTY,
+        num_predict: num_predict_for_char_limits(DEFAULT_RESPONSE_LENGTH_LIMIT as u32),
+    };
     let content = match state
         .ollama
         .complete(
@@ -72,6 +79,7 @@ pub async fn evaluate_summary_trigger(conv_id: Uuid, state: AppState) {
                 role: "user".to_owned(),
                 content: prompt,
             }],
+            options,
         )
         .await
     {

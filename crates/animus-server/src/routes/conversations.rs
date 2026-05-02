@@ -1,4 +1,6 @@
 use animus_core::persona::{Conversation, Message, Role};
+use animus_llm::num_predict_for_char_limits;
+use animus_llm::SamplingOptions;
 use animus_llm::{build_prompt, ollama::StreamChunk, resolve_placeholders, OllamaError};
 use axum::response::sse::{Event as SseEvent, Sse};
 use axum::{
@@ -125,7 +127,10 @@ async fn create_conversation(
 
     // 2. Fetch user_name from settings for placeholder resolution
     let settings = state.settings.get().await.map_err(|e| {
-        tracing::error!("failed to fetch settings for placeholder resolution: {:?}", e);
+        tracing::error!(
+            "failed to fetch settings for placeholder resolution: {:?}",
+            e
+        );
         ApiError::Internal
     })?;
 
@@ -275,7 +280,12 @@ async fn create_message(
         ApiError::Internal
     })?;
 
-    let prompt = build_prompt(&persona, &history, summary.flatten().as_ref(), &settings.user_name);
+    let prompt = build_prompt(
+        &persona,
+        &history,
+        summary.flatten().as_ref(),
+        &settings.user_name,
+    );
     let model = state.model_name.clone();
     tracing::debug!(
         target: "ollama_prompt",
@@ -291,11 +301,17 @@ async fn create_message(
         "dispatching prompt to ollama"
     );
 
+    let options = SamplingOptions {
+        temperature: persona.temperature,
+        repeat_penalty: persona.repeat_penalty,
+        num_predict: num_predict_for_char_limits(persona.response_length_limit as u32),
+    };
+
     if want_sse_header {
         // 7. Call Ollama (streaming)
         let sse_stream = async_stream::stream! {
             let mut full_text = String::with_capacity(2048);
-            let mut ollama_stream = Box::pin(state.ollama.stream(&model, prompt));
+            let mut ollama_stream = Box::pin(state.ollama.stream(&model, prompt, options));
             while let Some(chunk) = ollama_stream.next().await {
                 match chunk {
                     Ok(StreamChunk::Token(token)) => {
@@ -348,7 +364,7 @@ async fn create_message(
     // 7. Call Ollama (JSON path)
     let response_text = state
         .ollama
-        .complete(&model, prompt)
+        .complete(&model, prompt, options)
         .await
         .map_err(|e| match e {
             OllamaError::Network(ref err) => {
