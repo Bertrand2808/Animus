@@ -30,6 +30,7 @@ export default function CreatePersonaPage() {
     customModel: GLOBAL_DEFAULT_MODEL,
     avatarDataUrl: undefined,
     bgDataUrl: undefined,
+    responseStylePreset: undefined,
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +53,10 @@ export default function CreatePersonaPage() {
         first_message: draft.firstMessage || undefined,
         message_example: draft.messageExample || undefined,
         content_rating: draft.rating,
-        model: draft.useCustomModel && draft.customModel ? draft.customModel : undefined,
+        model:
+          draft.useCustomModel && draft.customModel
+            ? draft.customModel
+            : undefined,
         avatar_url: draft.avatarDataUrl,
         background_url: draft.bgDataUrl,
         model_instructions: draft.modelInstructions || undefined,
@@ -68,7 +72,11 @@ export default function CreatePersonaPage() {
       void navigate("/");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      setError(msg.startsWith("409") ? "A persona with this name already exists." : msg);
+      setError(
+        msg.startsWith("409")
+          ? "A persona with this name already exists."
+          : msg,
+      );
       setSubmitting(false);
     }
   };
@@ -78,7 +86,8 @@ export default function CreatePersonaPage() {
       className="min-h-screen w-full"
       style={{
         backgroundColor: "#F5F0E8",
-        fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+        fontFamily:
+          'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
         color: "#2C2C2C",
       }}
     >
@@ -90,7 +99,16 @@ export default function CreatePersonaPage() {
             onClick={() => navigate(-1)}
             className="grid h-8 w-8 place-items-center rounded-md text-[#6B6B6B] transition hover:bg-white hover:text-[#2C2C2C] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8B6F47]/40"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="m15 18-6-6 6-6" />
             </svg>
           </button>
@@ -108,7 +126,10 @@ export default function CreatePersonaPage() {
           <h2 className="text-[24px] font-semibold tracking-tight text-[#2C2C2C]">
             Create a persona
           </h2>
-          <p className="mt-1.5 text-[14px] leading-relaxed text-[#6B6B6B]" style={{ textWrap: "pretty" }}>
+          <p
+            className="mt-1.5 text-[14px] leading-relaxed text-[#6B6B6B]"
+            style={{ textWrap: "pretty" }}
+          >
             Define who they are, how they speak, and the world they live in.
             Everything below stays on your machine — nothing is uploaded.
           </p>
@@ -136,7 +157,9 @@ export default function CreatePersonaPage() {
           </button>
           <div className="flex items-center gap-3">
             {!draft.name.trim() && (
-              <span className="text-[11.5px] text-[#6B6B6B]">Name is required</span>
+              <span className="text-[11.5px] text-[#6B6B6B]">
+                Name is required
+              </span>
             )}
             <button
               type="button"
@@ -146,7 +169,16 @@ export default function CreatePersonaPage() {
             >
               {submitting ? "Creating…" : "Create persona"}
               {!submitting && (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
                   <path d="M5 12h14" />
                   <path d="m12 5 7 7-7 7" />
                 </svg>
