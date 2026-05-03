@@ -1,4 +1,6 @@
 export type ContentRating = "pg" | "mature" | "nsfw";
+export type InstructionTemplate = "default" | "nsfw" | "custom";
+export type ResponseStylePreset = "stable" | "balanced" | "creative";
 
 export interface Persona {
   id: string;
@@ -12,6 +14,8 @@ export interface Persona {
   background_url: string | null;
   content_rating: ContentRating;
   model: string | null;
+  raw_card: string;
+  created_at: number;
   model_instructions: string;
   appearance: string;
   speech_style: string;
@@ -20,7 +24,7 @@ export interface Persona {
   response_length_limit: number;
   temperature: number;
   repeat_penalty: number;
-  instruction_template: string;
+  instruction_template: InstructionTemplate;
 }
 
 export interface Message {
@@ -89,7 +93,7 @@ export interface UpdatePersonaRequest {
   response_length_limit?: number;
   temperature?: number;
   repeat_penalty?: number;
-  instruction_template?: string;
+  instruction_template?: InstructionTemplate;
 }
 
 export interface CreatePersonaRequest {
@@ -111,5 +115,5 @@ export interface CreatePersonaRequest {
   response_length_limit?: number;
   temperature?: number;
   repeat_penalty?: number;
-  instruction_template?: string;
+  instruction_template?: InstructionTemplate;
 }

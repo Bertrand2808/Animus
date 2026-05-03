@@ -5,6 +5,7 @@ import {
   GLOBAL_DEFAULT_MODEL,
   PersonaFormFields,
 } from "../components/persona-form";
+import { inferResponseStylePreset } from "../components/utils/persona-form-utils";
 import { getPersonaById, updatePersona } from "../lib/api";
 import type { Persona } from "../types/api";
 
@@ -30,6 +31,10 @@ function personaToDraft(p: Persona): DraftState {
     customModel: p.model ?? GLOBAL_DEFAULT_MODEL,
     avatarDataUrl: p.avatar_url ?? undefined,
     bgDataUrl: p.background_url ?? undefined,
+    responseStylePreset: inferResponseStylePreset(
+      p.temperature,
+      p.repeat_penalty,
+    ),
   };
 }
 
@@ -52,7 +57,8 @@ export default function EditPersonaPage() {
   const update = <K extends keyof DraftState>(key: K, val: DraftState[K]) =>
     setDraft((d) => (d ? { ...d, [key]: val } : d));
 
-  const canSubmit = draft !== null && draft.name.trim().length > 0 && !submitting;
+  const canSubmit =
+    draft !== null && draft.name.trim().length > 0 && !submitting;
 
   const handleSubmit = async () => {
     if (!canSubmit || !id || !draft) return;
@@ -67,7 +73,8 @@ export default function EditPersonaPage() {
         first_message: draft.firstMessage || undefined,
         message_example: draft.messageExample || undefined,
         content_rating: draft.rating,
-        model: draft.useCustomModel && draft.customModel ? draft.customModel : null,
+        model:
+          draft.useCustomModel && draft.customModel ? draft.customModel : null,
         avatar_url: draft.avatarDataUrl ?? null,
         background_url: draft.bgDataUrl ?? null,
         model_instructions: draft.modelInstructions,
@@ -84,7 +91,9 @@ export default function EditPersonaPage() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       setSubmitError(
-        msg.startsWith("409") ? "A persona with this name already exists." : msg,
+        msg.startsWith("409")
+          ? "A persona with this name already exists."
+          : msg,
       );
       setSubmitting(false);
     }
@@ -95,7 +104,8 @@ export default function EditPersonaPage() {
       className="min-h-screen w-full"
       style={{
         backgroundColor: "#F5F0E8",
-        fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+        fontFamily:
+          'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
         color: "#2C2C2C",
       }}
     >
@@ -107,7 +117,16 @@ export default function EditPersonaPage() {
             onClick={() => navigate(-1)}
             className="grid h-8 w-8 place-items-center rounded-md text-[#6B6B6B] transition hover:bg-white hover:text-[#2C2C2C] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8B6F47]/40"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="m15 18-6-6 6-6" />
             </svg>
           </button>
@@ -140,7 +159,10 @@ export default function EditPersonaPage() {
               <h2 className="text-[24px] font-semibold tracking-tight text-[#2C2C2C]">
                 Edit persona
               </h2>
-              <p className="mt-1.5 text-[14px] leading-relaxed text-[#6B6B6B]" style={{ textWrap: "pretty" }}>
+              <p
+                className="mt-1.5 text-[14px] leading-relaxed text-[#6B6B6B]"
+                style={{ textWrap: "pretty" }}
+              >
                 Changes are saved locally — nothing is uploaded.
               </p>
             </div>
@@ -169,7 +191,9 @@ export default function EditPersonaPage() {
           </button>
           <div className="flex items-center gap-3">
             {draft && !draft.name.trim() && (
-              <span className="text-[11.5px] text-[#6B6B6B]">Name is required</span>
+              <span className="text-[11.5px] text-[#6B6B6B]">
+                Name is required
+              </span>
             )}
             <button
               type="button"
@@ -179,7 +203,16 @@ export default function EditPersonaPage() {
             >
               {submitting ? "Saving…" : "Save changes"}
               {!submitting && (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
                   <path d="M5 12h14" />
                   <path d="m12 5 7 7-7 7" />
                 </svg>
