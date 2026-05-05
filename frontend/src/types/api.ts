@@ -117,3 +117,16 @@ export interface CreatePersonaRequest {
   repeat_penalty?: number;
   instruction_template?: InstructionTemplate;
 }
+
+export interface SettingsResponse {
+  user_name: string;
+  default_model: string;
+  ollama_url: string;
+  assets_dir: string;
+  backups_dir: string;
+}
+
+export interface PatchSettingsRequest {
+  user_name?: string;
+  default_model?: string;
+}

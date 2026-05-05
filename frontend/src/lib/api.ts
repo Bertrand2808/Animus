@@ -7,7 +7,9 @@ import type {
   CreatePersonaRequest,
   OllamaStatus,
   Persona,
+  SettingsResponse,
   UpdatePersonaRequest,
+  PatchSettingsRequest,
 } from "../types/api";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -39,7 +41,10 @@ export function createPersona(req: CreatePersonaRequest): Promise<Persona> {
   });
 }
 
-export function updatePersona(id: string, req: UpdatePersonaRequest): Promise<Persona> {
+export function updatePersona(
+  id: string,
+  req: UpdatePersonaRequest,
+): Promise<Persona> {
   return request<Persona>(`/api/personas/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -84,7 +89,12 @@ export async function getSummary(
   const data = await request<ApiSummaryResponse>(
     `/api/conversations/${conversationId}/summary`,
   );
-  if (!data.content || !data.message_range_start || !data.message_range_end || data.created_at === null) {
+  if (
+    !data.content ||
+    !data.message_range_start ||
+    !data.message_range_end ||
+    data.created_at === null
+  ) {
     return null;
   }
   return {
@@ -106,5 +116,19 @@ export function streamMessage(
       Accept: "text/event-stream",
     },
     body: JSON.stringify({ content }),
+  });
+}
+
+export function getSettings(): Promise<SettingsResponse> {
+  return request<SettingsResponse>("/api/settings");
+}
+
+export function updateSettings(
+  settings: PatchSettingsRequest,
+): Promise<SettingsResponse> {
+  return request<SettingsResponse>("/api/settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
   });
 }

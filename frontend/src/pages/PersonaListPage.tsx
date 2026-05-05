@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ImportPersonaModal } from "../components/ImportPersonaModal";
-import { OllamaStatusBadge } from "../components/OllamaStatusBadge";
 import { PersonaCard } from "../components/PersonaCard";
-import { useOllamaStatus } from "../hooks/useOllamaStatus";
 import { usePersonas } from "../hooks/usePersonas";
 import { createConversation, getLatestConversation } from "../lib/api";
 
@@ -13,13 +11,10 @@ export default function PersonaListPage() {
   const [navigating, setNavigating] = useState<string | null>(null);
 
   const { personas, loading, error, refetch } = usePersonas();
-  const ollamaStatus = useOllamaStatus();
   const navigate = useNavigate();
 
   const filtered = personas.filter((p) =>
-    `${p.name} ${p.description}`
-      .toLowerCase()
-      .includes(query.toLowerCase()),
+    `${p.name} ${p.description}`.toLowerCase().includes(query.toLowerCase()),
   );
 
   const handlePersonaClick = async (personaId: string) => {
@@ -38,58 +33,8 @@ export default function PersonaListPage() {
   };
 
   return (
-    <div
-      className="min-h-screen w-full"
-      style={{
-        backgroundColor: "#F5F0E8",
-        fontFamily:
-          'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-        color: "#2C2C2C",
-      }}
-    >
-      {/* Top bar */}
-      <header className="sticky top-0 z-20 border-b border-[#E8E0D0] bg-[#F5F0E8]/85 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-2.5">
-            <div className="grid h-7 w-7 place-items-center rounded-md bg-[#8B6F47] text-white">
-              <span className="font-serif text-[15px] leading-none">A</span>
-            </div>
-            <span className="text-[18px] font-semibold tracking-tight text-[#2C2C2C]">
-              Animus
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="hidden sm:block">
-              <OllamaStatusBadge
-                online={ollamaStatus.online}
-                model={ollamaStatus.model}
-              />
-            </div>
-            <button
-              aria-label="Settings"
-              className="grid h-9 w-9 place-items-center rounded-lg text-[#6B6B6B] transition hover:bg-white hover:text-[#2C2C2C] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8B6F47]/40"
-            >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main */}
-      <main className="mx-auto max-w-6xl px-4 pb-32 pt-8 sm:px-6 lg:px-8">
+    <div className="min-h-full bg-[#F5F0E8]">
+      <main className="mx-auto w-full max-w-6xl px-4 pb-32 pt-8 sm:px-6 lg:px-8">
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-[28px] font-semibold tracking-tight text-[#2C2C2C]">
@@ -126,13 +71,6 @@ export default function PersonaListPage() {
           </div>
         </div>
 
-        <div className="mb-4 sm:hidden">
-          <OllamaStatusBadge
-            online={ollamaStatus.online}
-            model={ollamaStatus.model}
-          />
-        </div>
-
         {error && (
           <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-[14px] text-rose-700">
             {error}
@@ -151,11 +89,14 @@ export default function PersonaListPage() {
         ) : filtered.length > 0 ? (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filtered.map((p) => (
-              <div key={p.id} className={navigating === p.id ? "opacity-60" : ""}>
+              <div
+                key={p.id}
+                className={navigating === p.id ? "opacity-60" : ""}
+              >
                 <PersonaCard
                   persona={p}
                   onClick={() => void handlePersonaClick(p.id)}
-                  onEdit={() => void navigate(`/edit/${p.id}`)}
+                  onEdit={() => void navigate(`/personas/${p.id}/edit`)}
                 />
               </div>
             ))}
@@ -175,10 +116,19 @@ export default function PersonaListPage() {
       <div className="fixed bottom-6 right-6 flex flex-col items-end gap-2 sm:bottom-8 sm:right-8">
         <button
           aria-label="Create new persona"
-          onClick={() => void navigate("/create")}
+          onClick={() => void navigate("/personas/new")}
           className="inline-flex items-center gap-2 rounded-full border border-[#8B6F47] bg-[#F5F0E8] py-2.5 pl-4 pr-5 text-[#8B6F47] shadow-md transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8B6F47]/40"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M12 5v14" />
             <path d="M5 12h14" />
           </svg>
@@ -189,7 +139,16 @@ export default function PersonaListPage() {
           onClick={() => setImportOpen(true)}
           className="inline-flex items-center gap-2 rounded-full bg-[#8B6F47] py-3 pl-4 pr-5 text-white shadow-lg shadow-[#8B6F47]/25 transition hover:bg-[#7a6040] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8B6F47]/40"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
             <polyline points="17 8 12 3 7 8" />
             <line x1="12" y1="3" x2="12" y2="15" />
