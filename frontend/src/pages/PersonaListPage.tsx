@@ -6,6 +6,7 @@ import { PersonaCard } from "../components/PersonaCard";
 import { useOllamaStatus } from "../hooks/useOllamaStatus";
 import { usePersonas } from "../hooks/usePersonas";
 import { createConversation, getLatestConversation } from "../lib/api";
+import SettingsButton from "@/components/SettingsButton";
 
 export default function PersonaListPage() {
   const [query, setQuery] = useState("");
@@ -17,9 +18,7 @@ export default function PersonaListPage() {
   const navigate = useNavigate();
 
   const filtered = personas.filter((p) =>
-    `${p.name} ${p.description}`
-      .toLowerCase()
-      .includes(query.toLowerCase()),
+    `${p.name} ${p.description}`.toLowerCase().includes(query.toLowerCase()),
   );
 
   const handlePersonaClick = async (personaId: string) => {
@@ -66,24 +65,7 @@ export default function PersonaListPage() {
                 model={ollamaStatus.model}
               />
             </div>
-            <button
-              aria-label="Settings"
-              className="grid h-9 w-9 place-items-center rounded-lg text-[#6B6B6B] transition hover:bg-white hover:text-[#2C2C2C] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8B6F47]/40"
-            >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-            </button>
+            <SettingsButton />
           </div>
         </div>
       </header>
@@ -151,7 +133,10 @@ export default function PersonaListPage() {
         ) : filtered.length > 0 ? (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filtered.map((p) => (
-              <div key={p.id} className={navigating === p.id ? "opacity-60" : ""}>
+              <div
+                key={p.id}
+                className={navigating === p.id ? "opacity-60" : ""}
+              >
                 <PersonaCard
                   persona={p}
                   onClick={() => void handlePersonaClick(p.id)}
@@ -178,7 +163,16 @@ export default function PersonaListPage() {
           onClick={() => void navigate("/create")}
           className="inline-flex items-center gap-2 rounded-full border border-[#8B6F47] bg-[#F5F0E8] py-2.5 pl-4 pr-5 text-[#8B6F47] shadow-md transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8B6F47]/40"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M12 5v14" />
             <path d="M5 12h14" />
           </svg>
@@ -189,7 +183,16 @@ export default function PersonaListPage() {
           onClick={() => setImportOpen(true)}
           className="inline-flex items-center gap-2 rounded-full bg-[#8B6F47] py-3 pl-4 pr-5 text-white shadow-lg shadow-[#8B6F47]/25 transition hover:bg-[#7a6040] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8B6F47]/40"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
             <polyline points="17 8 12 3 7 8" />
             <line x1="12" y1="3" x2="12" y2="15" />
