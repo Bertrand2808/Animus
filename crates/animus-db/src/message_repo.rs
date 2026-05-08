@@ -36,6 +36,85 @@ impl MessageRepo {
         Ok(())
     }
 
+    pub async fn update_content(
+        &self,
+        message_id: Uuid,
+        conversation_id: Uuid,
+        content: &str,
+    ) -> Result<Message, sqlx::Error> {
+        let msg_id_str = message_id.to_string();
+        let conv_id_str = conversation_id.to_string();
+
+        let result = sqlx::query!(
+            r#"
+            UPDATE messages
+            SET content = ?
+            WHERE id = ? AND conversation_id = ?
+            RETURNING
+                id AS "id!",
+                conversation_id AS "conversation_id!",
+                role AS "role!",
+                content AS "content!",
+                token_count
+            "#,
+            content,
+            msg_id_str,
+            conv_id_str,
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let Some(r) = result else {
+            return Err(sqlx::Error::RowNotFound);
+        };
+
+        Ok(Message {
+            id: r.id.parse().map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+            conversation_id: r
+                .conversation_id
+                .parse()
+                .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+            role: str_to_role(&r.role).map_err(sqlx::Error::Decode)?,
+            content: r.content,
+            token_count: r.token_count,
+        })
+    }
+
+    pub async fn find_by_id(&self, message_id: Uuid) -> Result<Option<Message>, sqlx::Error> {
+        let msg_id = message_id.to_string();
+
+        let result = sqlx::query!(
+            r#"
+            SELECT
+                id AS "id!",
+                conversation_id AS "conversation_id!",
+                role AS "role!",
+                content AS "content!",
+                token_count
+            FROM messages
+            WHERE id = ?
+            "#,
+            msg_id
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        result
+            .map(|r| {
+                Ok(Message {
+                    id: r.id.parse().map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+                    conversation_id: r
+                        .conversation_id
+                        .parse()
+                        .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+                    role: str_to_role(&r.role).map_err(sqlx::Error::Decode)?,
+                    content: r.content,
+                    token_count: r.token_count,
+                })
+            })
+            .transpose()
+    }
+
     pub async fn find_last_n(
         &self,
         conversation_id: Uuid,
@@ -46,7 +125,8 @@ impl MessageRepo {
             r#"
             SELECT id AS "id!", conversation_id AS "conversation_id!", role AS "role!", content AS "content!", token_count
             FROM (
-                SELECT id, conversation_id, role, content, token_count
+                SELECT
+                id, conversation_id, role, content, token_count
                 FROM messages
                 WHERE conversation_id = ?
                 ORDER BY id DESC
@@ -76,6 +156,88 @@ impl MessageRepo {
             .collect()
     }
 
+    pub async fn find_latest_by_conversation(
+        &self,
+        conversation_id: Uuid,
+    ) -> Result<Option<Message>, sqlx::Error> {
+        let conv_id_str = conversation_id.to_string();
+        // we are sorting by id cause Uuid v7 has  Unix timestamp in milliseconds (more precise than created_at field)
+        let result = sqlx::query!(
+            r#"
+            SELECT
+                id AS "id!",
+                conversation_id AS "conversation_id!",
+                role AS "role!",
+                content AS "content!",
+                token_count
+            FROM messages
+            WHERE conversation_id = ?
+            ORDER BY id DESC
+            LIMIT 1;
+            "#,
+            conv_id_str
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        result
+            .map(|r| {
+                Ok(Message {
+                    id: r.id.parse().map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+                    conversation_id: r
+                        .conversation_id
+                        .parse()
+                        .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+                    role: str_to_role(&r.role).map_err(sqlx::Error::Decode)?,
+                    content: r.content,
+                    token_count: r.token_count,
+                })
+            })
+            .transpose()
+    }
+
+    pub async fn find_before(
+        &self,
+        conversation_id: Uuid,
+        before_id: Uuid,
+    ) -> Result<Vec<Message>, sqlx::Error> {
+        let conv_id_str = conversation_id.to_string();
+        let before_id_str = before_id.to_string();
+
+        let rows = sqlx::query!(
+            r#"
+            SELECT
+                id AS "id!",
+                conversation_id AS "conversation_id!",
+                role AS "role!",
+                content AS "content!",
+                token_count
+            FROM messages
+            WHERE conversation_id = ? AND id < ?
+            ORDER BY id ASC
+            "#,
+            conv_id_str,
+            before_id_str
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter()
+            .map(|r| {
+                Ok(Message {
+                    id: r.id.parse().map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+                    conversation_id: r
+                        .conversation_id
+                        .parse()
+                        .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+                    role: str_to_role(&r.role).map_err(sqlx::Error::Decode)?,
+                    content: r.content,
+                    token_count: r.token_count,
+                })
+            })
+            .collect()
+    }
+
     pub async fn find_after(
         &self,
         conversation_id: Uuid,
@@ -85,7 +247,17 @@ impl MessageRepo {
         let after_id_str = after_id.to_string();
 
         let rows = sqlx::query!(
-            "SELECT * FROM messages WHERE conversation_id = ? AND id > ?",
+            r#"
+            SELECT
+                id AS "id!",
+                conversation_id AS "conversation_id!",
+                role AS "role!",
+                content AS "content!",
+                token_count
+            FROM messages
+            WHERE conversation_id = ? AND id > ?
+            ORDER BY id ASC
+            "#,
             conv_id_str,
             after_id_str
         )
@@ -95,11 +267,7 @@ impl MessageRepo {
         rows.into_iter()
             .map(|r| {
                 Ok(Message {
-                    id: r
-                        .id
-                        .expect("ID can not be null")
-                        .parse()
-                        .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+                    id: r.id.parse().map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
                     conversation_id: r
                         .conversation_id
                         .parse()
@@ -247,11 +415,13 @@ mod tests {
         let repo = MessageRepo::new(pool);
         let mut messages = Vec::new();
 
-        // Insert some messages for the conversation
         for i in 0..20 {
             let msg = make_message(conv_id, [Role::User, Role::Assistant, Role::System][i % 3]);
-            repo.insert(&msg).await.unwrap();
             messages.push(msg);
+        }
+
+        for msg in messages.iter().rev() {
+            repo.insert(msg).await.unwrap();
         }
 
         for k in 0..15 {
@@ -276,5 +446,192 @@ mod tests {
         let last_id = messages.last().unwrap().id;
         let empty = repo.find_after(conv_id, last_id).await.unwrap();
         assert!(empty.is_empty());
+    }
+
+    #[sqlx::test]
+    async fn find_by_id_returns_inserted_message(pool: SqlitePool) {
+        let conv_id = seed_conversation(&pool).await;
+        let repo = MessageRepo::new(pool);
+
+        let message = Message {
+            id: Uuid::now_v7(),
+            conversation_id: conv_id,
+            role: Role::Assistant,
+            content: "found me".to_string(),
+            token_count: Some(42),
+        };
+
+        repo.insert(&message).await.unwrap();
+
+        let found = repo.find_by_id(message.id).await.unwrap().unwrap();
+
+        assert_eq!(found.id, message.id);
+        assert_eq!(found.conversation_id, message.conversation_id);
+        assert_eq!(found.role, message.role);
+        assert_eq!(found.content, message.content);
+        assert_eq!(found.token_count, message.token_count);
+    }
+
+    #[sqlx::test]
+    async fn find_by_id_not_found(pool: SqlitePool) {
+        let repo = MessageRepo::new(pool);
+        let found = repo.find_by_id(Uuid::now_v7()).await.unwrap();
+
+        assert!(found.is_none());
+    }
+
+    #[sqlx::test]
+    async fn find_latest_by_conversation_returns_none_when_empty(pool: SqlitePool) {
+        let conversation_id = seed_conversation(&pool).await;
+        let repo = MessageRepo::new(pool);
+
+        let found = repo
+            .find_latest_by_conversation(conversation_id)
+            .await
+            .unwrap();
+        assert!(found.is_none());
+    }
+
+    #[sqlx::test]
+    async fn find_latest_by_conversation_returns_latest_message_for_conversation(pool: SqlitePool) {
+        let conversation_id = seed_conversation(&pool).await;
+        let other_conv_id = seed_conversation(&pool).await;
+        let repo = MessageRepo::new(pool);
+
+        let mut messages = Vec::new();
+        let mut other_messages = Vec::new();
+        // Insert some messages for both conversation
+        // TODO (P3) : factorise this in a helper function
+        for i in 0..20 {
+            let msg = make_message(
+                conversation_id,
+                [Role::User, Role::Assistant, Role::System][i % 3],
+            );
+            let other_msg = make_message(
+                other_conv_id,
+                [Role::User, Role::Assistant, Role::System][i % 3],
+            );
+            repo.insert(&msg).await.unwrap();
+            repo.insert(&other_msg).await.unwrap();
+            messages.push(msg);
+            other_messages.push(other_msg);
+        }
+
+        let latest_msg = Message {
+            content: "latest".to_string(),
+            ..make_message(conversation_id, Role::Assistant)
+        };
+
+        repo.insert(&latest_msg).await.unwrap();
+
+        let found = repo
+            .find_latest_by_conversation(conversation_id)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(found.id, latest_msg.id);
+        assert_eq!(found.conversation_id, latest_msg.conversation_id);
+        assert_eq!(found.content, latest_msg.content);
+        assert_eq!(found.role, latest_msg.role);
+        assert_eq!(found.token_count, latest_msg.token_count);
+    }
+
+    #[sqlx::test]
+    async fn find_before(pool: SqlitePool) {
+        let conv_id = seed_conversation(&pool).await;
+        let repo = MessageRepo::new(pool);
+        let mut messages = Vec::new();
+
+        for i in 0..20 {
+            let msg = make_message(conv_id, [Role::User, Role::Assistant, Role::System][i % 3]);
+            messages.push(msg);
+        }
+
+        for msg in messages.iter().rev() {
+            repo.insert(msg).await.unwrap();
+        }
+
+        for k in 1..15 {
+            let before_id = messages[k].id;
+            let result = repo.find_before(conv_id, before_id).await.unwrap();
+
+            let expected = &messages[..k];
+            assert_eq!(
+                result.len(),
+                expected.len(),
+                "Mauvais nombre de messages avant l'ID {}",
+                before_id
+            );
+
+            for (got, expected_msg) in result.iter().zip(expected.iter()) {
+                assert_eq!(got.id, expected_msg.id);
+                assert_eq!(got.content, expected_msg.content);
+                assert_eq!(got.role, expected_msg.role);
+            }
+        }
+
+        let first_id = messages.first().unwrap().id;
+        let empty = repo.find_before(conv_id, first_id).await.unwrap();
+        assert!(empty.is_empty());
+    }
+
+    #[sqlx::test]
+    async fn update_content_should_returns_message_updated(pool: SqlitePool) {
+        let conversation_id = seed_conversation(&pool).await;
+        let repo = MessageRepo::new(pool);
+
+        let mut messages = Vec::new();
+        for i in 0..20 {
+            let msg = make_message(
+                conversation_id,
+                [Role::User, Role::Assistant, Role::System][i % 3],
+            );
+            repo.insert(&msg).await.unwrap();
+            messages.push(msg);
+        }
+
+        let latest_message = repo
+            .find_latest_by_conversation(conversation_id)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let updated_message = repo
+            .update_content(latest_message.id, latest_message.conversation_id, "Goodbye")
+            .await
+            .unwrap();
+
+        assert_eq!(updated_message.id, latest_message.id);
+        assert_eq!(
+            updated_message.conversation_id,
+            latest_message.conversation_id
+        );
+        assert_eq!(updated_message.role, latest_message.role);
+        assert_eq!(updated_message.content, "Goodbye");
+        assert_eq!(updated_message.token_count, latest_message.token_count);
+    }
+
+    #[sqlx::test]
+    async fn update_content_should_not_update_message_from_another_conversation(pool: SqlitePool) {
+        let conversation_id = seed_conversation(&pool).await;
+        let other_conversation_id = seed_conversation(&pool).await;
+        let repo = MessageRepo::new(pool);
+
+        let message = Message {
+            content: "Original".to_string(),
+            ..make_message(conversation_id, Role::User)
+        };
+        repo.insert(&message).await.unwrap();
+
+        let result = repo
+            .update_content(message.id, other_conversation_id, "Goodbye")
+            .await;
+
+        assert!(matches!(result, Err(sqlx::Error::RowNotFound)));
+
+        let stored_message = repo.find_by_id(message.id).await.unwrap().unwrap();
+        assert_eq!(stored_message.conversation_id, conversation_id);
+        assert_eq!(stored_message.content, "Original");
     }
 }
