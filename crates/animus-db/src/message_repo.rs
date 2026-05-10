@@ -363,6 +363,17 @@ mod tests {
         }
     }
 
+    fn make_ordered_message(conversation_id: Uuid, role: Role, index: u64) -> Message {
+        Message {
+            id: uuid::Builder::from_unix_timestamp_millis(1_700_000_000_000 + index, &[0; 10])
+                .into_uuid(),
+            conversation_id,
+            role,
+            content: format!("message-{index}"),
+            token_count: Some(1),
+        }
+    }
+
     #[sqlx::test]
     async fn insert_and_find_last_10(pool: SqlitePool) {
         let conv_id = seed_conversation(&pool).await;
@@ -416,7 +427,11 @@ mod tests {
         let mut messages = Vec::new();
 
         for i in 0..20 {
-            let msg = make_message(conv_id, [Role::User, Role::Assistant, Role::System][i % 3]);
+            let msg = make_ordered_message(
+                conv_id,
+                [Role::User, Role::Assistant, Role::System][i as usize % 3],
+                i,
+            );
             messages.push(msg);
         }
 
@@ -499,27 +514,25 @@ mod tests {
         let repo = MessageRepo::new(pool);
 
         let mut messages = Vec::new();
-        let mut other_messages = Vec::new();
-        // Insert some messages for both conversation
-        // TODO (P3) : factorise this in a helper function
         for i in 0..20 {
-            let msg = make_message(
+            let msg = make_ordered_message(
                 conversation_id,
-                [Role::User, Role::Assistant, Role::System][i % 3],
+                [Role::User, Role::Assistant, Role::System][i as usize % 3],
+                i,
             );
-            let other_msg = make_message(
+            let other_msg = make_ordered_message(
                 other_conv_id,
-                [Role::User, Role::Assistant, Role::System][i % 3],
+                [Role::User, Role::Assistant, Role::System][i as usize % 3],
+                i + 100,
             );
             repo.insert(&msg).await.unwrap();
             repo.insert(&other_msg).await.unwrap();
             messages.push(msg);
-            other_messages.push(other_msg);
         }
 
         let latest_msg = Message {
             content: "latest".to_string(),
-            ..make_message(conversation_id, Role::Assistant)
+            ..make_ordered_message(conversation_id, Role::Assistant, 20)
         };
 
         repo.insert(&latest_msg).await.unwrap();
@@ -544,7 +557,11 @@ mod tests {
         let mut messages = Vec::new();
 
         for i in 0..20 {
-            let msg = make_message(conv_id, [Role::User, Role::Assistant, Role::System][i % 3]);
+            let msg = make_ordered_message(
+                conv_id,
+                [Role::User, Role::Assistant, Role::System][i as usize % 3],
+                i,
+            );
             messages.push(msg);
         }
 
