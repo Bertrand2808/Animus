@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 
 use animus_core::{
-    persona::{Message, Role, Summary},
     Persona,
+    persona::{Message, Role, Summary},
 };
 use serde::{Deserialize, Serialize};
 
@@ -420,7 +420,10 @@ mod tests {
         let mut persona = create_test_persona();
         persona.instruction_template = "custom".to_owned();
         persona.model_instructions = "My custom instructions.".to_owned();
-        assert_eq!(select_template(&persona).as_ref(), "My custom instructions.");
+        assert_eq!(
+            select_template(&persona).as_ref(),
+            "My custom instructions."
+        );
     }
 
     #[test]
@@ -462,8 +465,14 @@ mod tests {
         let block = build_system_block(&persona, "User");
 
         assert!(block.contains("# Role"), "missing # Role");
-        assert!(block.contains("# Model Instructions"), "missing # Model Instructions");
-        assert!(block.contains("# Response Contract"), "missing # Response Contract");
+        assert!(
+            block.contains("# Model Instructions"),
+            "missing # Model Instructions"
+        );
+        assert!(
+            block.contains("# Response Contract"),
+            "missing # Response Contract"
+        );
     }
 
     #[test]
@@ -480,10 +489,22 @@ mod tests {
 
         let block = build_system_block(&persona, "User");
 
-        assert!(!block.contains("# Character"), "# Character should be omitted when all sub-fields empty");
-        assert!(!block.contains("# Scenario"), "# Scenario should be omitted when empty");
-        assert!(!block.contains("# Character Goals"), "# Character Goals should be omitted when empty");
-        assert!(!block.contains("# Style Examples"), "# Style Examples should be omitted when empty");
+        assert!(
+            !block.contains("# Character"),
+            "# Character should be omitted when all sub-fields empty"
+        );
+        assert!(
+            !block.contains("# Scenario"),
+            "# Scenario should be omitted when empty"
+        );
+        assert!(
+            !block.contains("# Character Goals"),
+            "# Character Goals should be omitted when empty"
+        );
+        assert!(
+            !block.contains("# Style Examples"),
+            "# Style Examples should be omitted when empty"
+        );
     }
 
     #[test]
@@ -556,7 +577,11 @@ mod tests {
         )];
         let result = build_prompt(&persona, &messages, None, "User");
 
-        assert_eq!(result.len(), 2, "new conversation -> system + first message");
+        assert_eq!(
+            result.len(),
+            2,
+            "new conversation -> system + first message"
+        );
 
         assert_eq!(result[0].role, "system");
         assert!(result[0].content.contains("# Role"));
@@ -612,8 +637,16 @@ mod tests {
         assert_eq!(result[1].role, "system"); // summary
         assert_eq!(result[2].role, "assistant"); // first message
 
-        assert!(result[1].content.contains("Summary of earlier conversation:"));
-        assert!(result[1].content.contains("Résumé de la conversation précédente."));
+        assert!(
+            result[1]
+                .content
+                .contains("Summary of earlier conversation:")
+        );
+        assert!(
+            result[1]
+                .content
+                .contains("Résumé de la conversation précédente.")
+        );
     }
 
     #[test]
@@ -651,7 +684,8 @@ mod tests {
         let last = result.last().expect("prompt must not be empty");
         assert_eq!(last.role, "system");
         assert!(
-            last.content.contains("Stay focused on the scene, TestPersona."),
+            last.content
+                .contains("Stay focused on the scene, TestPersona."),
             "post_history_instructions should be resolved and appended: {:?}",
             last.content
         );
