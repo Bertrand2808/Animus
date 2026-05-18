@@ -3,3 +3,4 @@ pub mod health;
 pub mod personas;
 pub mod settings;
 pub mod summary;
+pub mod messages;
