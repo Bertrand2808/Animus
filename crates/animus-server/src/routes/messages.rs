@@ -19,7 +19,7 @@ pub struct RegenerateMessageRequest {
 
 #[derive(Deserialize)]
 pub struct EditMessageRequest {
-    content: Option<String>,
+    content: String,
 }
 
 pub fn router() -> Router<AppState> {
@@ -169,9 +169,15 @@ async fn edit_message(
         .map_err(|_| ApiError::Internal)?
         .ok_or(ApiError::NotFound)?;
 
-    if request.content.as_ref().is_none_or(|c| c.is_empty()) {
+    if request.content.is_empty() {
         return Err(ApiError::UnprocessableEntity(
-            "edited message must not be null".to_owned(),
+            "content must not be empty".to_owned(),
+        ));
+    }
+
+    if message.role != Role::Assistant {
+        return Err(ApiError::UnprocessableEntity(
+            "only assistant messages can be edited".to_owned(),
         ));
     }
 
@@ -188,19 +194,9 @@ async fn edit_message(
         ));
     }
 
-    if message.role != Role::Assistant {
-        return Err(ApiError::UnprocessableEntity(
-            "only assistant messages can be edited".to_owned(),
-        ));
-    }
-
     let updated_message = state
         .messages
-        .update_content(
-            message_id,
-            message.conversation_id,
-            request.content.as_ref().unwrap(),
-        )
+        .update_content(message_id, message.conversation_id, &request.content)
         .await
         .map_err(|_| ApiError::Internal)?;
 
@@ -648,6 +644,23 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(edit.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn edit_message_not_found(pool: SqlitePool) {
+        let app = make_app(pool);
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/api/messages/00000000-0000-0000-0000-000000000000")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"content":"hello"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
