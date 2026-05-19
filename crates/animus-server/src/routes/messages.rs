@@ -17,11 +17,18 @@ pub struct RegenerateMessageRequest {
     instructions: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub struct EditMessageRequest {
+    content: Option<String>,
+}
+
 pub fn router() -> Router<AppState> {
-    Router::new().route(
-        "/api/messages/:id/regenerate",
-        axum::routing::post(regenerate_message),
-    )
+    Router::new()
+        .route(
+            "/api/messages/:id/regenerate",
+            axum::routing::post(regenerate_message),
+        )
+        .route("/api/messages/:id", axum::routing::patch(edit_message))
 }
 
 async fn regenerate_message(
@@ -150,6 +157,56 @@ async fn regenerate_message(
     Ok(Sse::new(sse_stream).into_response())
 }
 
+async fn edit_message(
+    State(state): State<AppState>,
+    Path(message_id): Path<Uuid>,
+    Json(request): Json<EditMessageRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let message = state
+        .messages
+        .find_by_id(message_id)
+        .await
+        .map_err(|_| ApiError::Internal)?
+        .ok_or(ApiError::NotFound)?;
+
+    if request.content.as_ref().is_none_or(|c| c.is_empty()) {
+        return Err(ApiError::UnprocessableEntity(
+            "edited message must not be null".to_owned(),
+        ));
+    }
+
+    let latest_message = state
+        .messages
+        .find_latest_by_conversation(message.conversation_id)
+        .await
+        .map_err(|_| ApiError::Internal)?
+        .ok_or(ApiError::NotFound)?;
+
+    if message_id != latest_message.id {
+        return Err(ApiError::UnprocessableEntity(
+            "only latest message can be edited".to_owned(),
+        ));
+    }
+
+    if message.role != Role::Assistant {
+        return Err(ApiError::UnprocessableEntity(
+            "only assistant messages can be edited".to_owned(),
+        ));
+    }
+
+    let updated_message = state
+        .messages
+        .update_content(
+            message_id,
+            message.conversation_id,
+            request.content.as_ref().unwrap(),
+        )
+        .await
+        .map_err(|_| ApiError::Internal)?;
+
+    Ok(Json(updated_message))
+}
+
 #[cfg(test)]
 mod tests {
     use animus_core::{
@@ -261,8 +318,6 @@ mod tests {
         persona
     }
 
-    // Test 1 — message inexistant → 404
-    // POST /api/messages/<uuid-inexistant>/regenerate → 404
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn message_not_found(pool: SqlitePool) {
         let app = make_app(pool);
@@ -280,14 +335,8 @@ mod tests {
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
     }
 
-    // Test 2 — message non-latest → 422
-    // Scénario :
-    // 1. Crée une conversation (via POST /api/conversations)
-    // 2. Insère un deuxième message assistant directement en base (via MessageRepo)
-    // 3. Appelle regenerate sur le premier message
-    // 4. Attend 422
     #[sqlx::test(migrator = "MIGRATOR")]
-    async fn message_non_latest(pool: SqlitePool) {
+    async fn message_non_latest_on_regenerate(pool: SqlitePool) {
         let persona = insert_persona(&pool, "Alice", "Hello, I am {{char}}").await;
         let message_repo = MessageRepo::new(pool.clone());
         let app = make_app(pool.clone());
@@ -336,12 +385,6 @@ mod tests {
         assert_eq!(body["error"], "only the latest message can be regenerated");
     }
 
-    // Test 3 — message user → 422
-    // Scénario :
-    // 1. Crée une conversation
-    // 2. Insère un message Role::User en base
-    // 3. Appelle regenerate sur ce message user
-    // 4. Attend 422
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn regenerate_user_message(pool: SqlitePool) {
         let persona = insert_persona(&pool, "Alice", "Hello, I am {{char}}").await;
@@ -513,16 +556,192 @@ mod tests {
         assert_eq!(regenerate.status(), StatusCode::OK);
         let response_body = to_bytes(regenerate.into_body(), usize::MAX).await.unwrap();
         let response_body = String::from_utf8(response_body.to_vec()).unwrap();
-        assert!(response_body.contains(&format!(
-            r#""message_id":"{original_message_id}""#
-        )));
+        assert!(response_body.contains(&format!(r#""message_id":"{original_message_id}""#)));
 
-        let messages_after_regenerate = message_repo
-            .find_last_n(conversation_id, 10)
-            .await
-            .unwrap();
+        let messages_after_regenerate =
+            message_repo.find_last_n(conversation_id, 10).await.unwrap();
         assert_eq!(messages_after_regenerate.len(), 1);
         assert_eq!(messages_after_regenerate[0].id, original_message_id);
         assert_eq!(messages_after_regenerate[0].content, "regenerated text");
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn edit_latest_assistant_message_updates_content(pool: SqlitePool) {
+        let persona = insert_persona(&pool, "Alice", "Hello, I am {{char}}").await;
+        let message_repo = MessageRepo::new(pool.clone());
+        let app = make_app(pool.clone());
+
+        let res = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/conversations")
+                    .header("content-type", "application/json")
+                    .body(Body::from(format!(r#"{{"persona_id":"{}"}}"#, persona.id)))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        let created = body_json(res).await;
+        let conversation_id = Uuid::parse_str(created["id"].as_str().unwrap()).unwrap();
+        let messages = message_repo.find_last_n(conversation_id, 10).await.unwrap();
+        let first_message_id = messages.first().unwrap().id;
+        let edit = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/api/messages/{first_message_id}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"content":"edited message!"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(edit.status(), StatusCode::OK);
+
+        let edited_message = message_repo
+            .find_by_id(first_message_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(edited_message.content, "edited message!");
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn empty_content_on_edit_message(pool: SqlitePool) {
+        let persona = insert_persona(&pool, "Alice", "Hello, I am {{char}}").await;
+        let message_repo = MessageRepo::new(pool.clone());
+        let app = make_app(pool.clone());
+
+        let res = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/conversations")
+                    .header("content-type", "application/json")
+                    .body(Body::from(format!(r#"{{"persona_id":"{}"}}"#, persona.id)))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        let created = body_json(res).await;
+        let conversation_id = Uuid::parse_str(created["id"].as_str().unwrap()).unwrap();
+        let messages = message_repo.find_last_n(conversation_id, 10).await.unwrap();
+        let first_message_id = messages.first().unwrap().id;
+        let edit = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/api/messages/{first_message_id}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"content":""}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(edit.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn non_latest_message_on_edit_message(pool: SqlitePool) {
+        let persona = insert_persona(&pool, "Alice", "Hello, I am {{char}}").await;
+        let message_repo = MessageRepo::new(pool.clone());
+        let app = make_app(pool.clone());
+        let res = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/conversations")
+                    .header("content-type", "application/json")
+                    .body(Body::from(format!(r#"{{"persona_id":"{}"}}"#, persona.id)))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        let created = body_json(res).await;
+        let conversation_id = Uuid::parse_str(created["id"].as_str().unwrap()).unwrap();
+        let messages = message_repo.find_last_n(conversation_id, 10).await.unwrap();
+        let first_message_id = messages.first().unwrap().id;
+        let newer_message = Message {
+            id: Uuid::now_v7(),
+            conversation_id,
+            role: Role::Assistant,
+            content: "newer assistant reply".to_string(),
+            token_count: Some(1),
+        };
+
+        message_repo.insert(&newer_message).await.unwrap();
+        let edit = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/api/messages/{first_message_id}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"content":"edited message!"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(edit.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn user_message_on_edit_message(pool: SqlitePool) {
+        let persona = insert_persona(&pool, "Alice", "Hello, I am {{char}}").await;
+        let message_repo = MessageRepo::new(pool.clone());
+        let app = make_app(pool.clone());
+        let res = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/conversations")
+                    .header("content-type", "application/json")
+                    .body(Body::from(format!(r#"{{"persona_id":"{}"}}"#, persona.id)))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::CREATED);
+        let created = body_json(res).await;
+        let conversation_id = Uuid::parse_str(created["id"].as_str().unwrap()).unwrap();
+        let newer_message = Message {
+            id: Uuid::now_v7(),
+            conversation_id,
+            role: Role::User,
+            content: "newer user reply".to_string(),
+            token_count: Some(1),
+        };
+
+        message_repo.insert(&newer_message).await.unwrap();
+
+        let last_message_id = newer_message.id;
+
+        let regenerate = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/api/messages/{last_message_id}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"content":"edited message!"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(regenerate.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let body = body_json(regenerate).await;
+        assert_eq!(body["error"], "only assistant messages can be edited");
     }
 }
