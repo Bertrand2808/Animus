@@ -119,6 +119,34 @@ export function streamMessage(
   });
 }
 
+export function regenerateMessage(
+  messageId: string,
+  instructions?: string,
+): Promise<Response> {
+  return fetch(`/api/messages/${messageId}/regenerate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+    },
+    body: JSON.stringify({ instructions: instructions ?? null }),
+  });
+}
+
+export function editMessage(
+  messageId: string,
+  content: string,
+): Promise<{ id: string; role: string; content: string }> {
+  return request<{ id: string; role: string; content: string }>(
+    `/api/messages/${messageId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    },
+  );
+}
+
 export function getSettings(): Promise<SettingsResponse> {
   return request<SettingsResponse>("/api/settings");
 }
