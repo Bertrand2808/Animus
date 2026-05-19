@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
-import { getConversation, getPersonaById } from "../lib/api";
+import { editMessage, getConversation, getPersonaById } from "../lib/api";
 import { useStreamingMessage } from "../hooks/useStreamingMessage";
 import { SummaryDrawer } from "./SummaryDrawer";
+import { Button } from "../components/ui/button";
+import { Textarea } from "../components/ui/textarea";
 import type { Message, Persona } from "../types/api";
 
 function nameToHue(name: string): number {
@@ -112,18 +114,100 @@ function BlinkingCursor() {
   );
 }
 
+function MessageControls({
+  onRedo,
+  onRedoWithNote,
+  onEdit,
+  disabled,
+}: {
+  onRedo: () => void;
+  onRedoWithNote: () => void;
+  onEdit: () => void;
+  disabled: boolean;
+}) {
+  const btnClass =
+    "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-[#6B6B6B] transition hover:bg-white hover:text-[#8B6F47] disabled:pointer-events-none disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8B6F47]/40";
+  return (
+    <div className="mt-1 flex items-center gap-0.5">
+      <button type="button" className={btnClass} onClick={onRedo} disabled={disabled} aria-label="Regenerate response">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+          <path d="M3 3v5h5" />
+        </svg>
+        Redo
+      </button>
+      <button type="button" className={btnClass} onClick={onRedoWithNote} disabled={disabled} aria-label="Regenerate with instruction">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+          <path d="M3 3v5h5" />
+          <path d="M12 8v4l3 3" />
+        </svg>
+        Redo with note
+      </button>
+      <button type="button" className={btnClass} onClick={onEdit} disabled={disabled} aria-label="Edit response">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+        </svg>
+        Edit
+      </button>
+    </div>
+  );
+}
+
 function MessageRow({
   message,
   isStreaming,
+  streamingContent,
   personaHue,
   personaName,
+  isLatestAssistant,
+  controlsDisabled,
+  onRedo,
+  onRedoWithNote,
+  onEditSave,
 }: {
   message: { id: string; role: "user" | "assistant"; content: string };
   isStreaming: boolean;
+  streamingContent?: string;
   personaHue: number;
   personaName: string;
+  isLatestAssistant?: boolean;
+  controlsDisabled?: boolean;
+  onRedo?: () => void;
+  onRedoWithNote?: () => void;
+  onEditSave?: (content: string) => Promise<void>;
 }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+
+  const handleEditStart = () => {
+    setEditDraft(message.content);
+    setIsEditing(true);
+  };
+
+  const handleEditCancel = () => {
+    setIsEditing(false);
+    setEditDraft("");
+  };
+
+  const handleEditSave = async () => {
+    if (!onEditSave || !editDraft.trim()) return;
+    setEditSaving(true);
+    try {
+      await onEditSave(editDraft.trim());
+      setIsEditing(false);
+      setEditDraft("");
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const displayContent = streamingContent !== undefined ? streamingContent : message.content;
+  const showCursor = isStreaming;
   const isUser = message.role === "user";
+
   return (
     <div className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}>
       {!isUser && (
@@ -132,32 +216,76 @@ function MessageRow({
         </div>
       )}
       <div
-        className={`flex max-w-[78%] flex-col ${isUser ? "items-end" : "items-start"}`}
+        className={`flex flex-col ${isEditing ? "w-full max-w-[92%]" : "max-w-[78%]"} ${isUser ? "items-end" : "items-start"}`}
       >
-        <div
-          className={[
-            "rounded-xl px-4 py-2.5 text-[14.5px] leading-relaxed shadow-sm",
-            isUser
-              ? "bg-[#8B6F47] text-white rounded-br-sm"
-              : "bg-white border border-[#E8E0D0] text-[#2C2C2C] rounded-bl-sm",
-          ].join(" ")}
-        >
-          <ReactMarkdown
-            components={{
-              p: ({ children }) => (
-                <p className="whitespace-pre-wrap m-0" style={{ textWrap: "pretty" }}>
-                  {children}
-                  {isStreaming && <BlinkingCursor />}
-                </p>
-              ),
-              em: ({ children }) => (
-                <em className={isUser ? "opacity-80" : "text-[#6B6B6B]"}>{children}</em>
-              ),
-            }}
+        {isEditing ? (
+          <div className="w-full">
+            <Textarea
+              value={editDraft}
+              onChange={(e) => setEditDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") handleEditCancel();
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleEditSave();
+              }}
+              className="text-[14.5px] leading-relaxed"
+              autoFocus
+              disabled={editSaving}
+            />
+            <div className="mt-2 flex items-center gap-1.5">
+              <Button
+                size="sm"
+                onClick={handleEditSave}
+                disabled={editSaving || !editDraft.trim()}
+              >
+                {editSaving ? "Saving…" : "Save"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleEditCancel}
+                disabled={editSaving}
+              >
+                Cancel
+              </Button>
+              <span className="ml-1 text-[11px] text-[#C9BCA6]">
+                <kbd className="rounded border border-[#E8E0D0] bg-[#F5F0E8] px-1 py-0.5 font-mono text-[10px]">⌘↵</kbd> save
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div
+            className={[
+              "rounded-xl px-4 py-2.5 text-[14.5px] leading-relaxed shadow-sm",
+              isUser
+                ? "bg-[#8B6F47] text-white rounded-br-sm"
+                : "bg-white border border-[#E8E0D0] text-[#2C2C2C] rounded-bl-sm",
+            ].join(" ")}
           >
-            {message.content}
-          </ReactMarkdown>
-        </div>
+            <ReactMarkdown
+              components={{
+                p: ({ children }) => (
+                  <p className="whitespace-pre-wrap m-0" style={{ textWrap: "pretty" }}>
+                    {children}
+                    {showCursor && <BlinkingCursor />}
+                  </p>
+                ),
+                em: ({ children }) => (
+                  <em className={isUser ? "opacity-80" : "text-[#6B6B6B]"}>{children}</em>
+                ),
+              }}
+            >
+              {displayContent}
+            </ReactMarkdown>
+          </div>
+        )}
+        {isLatestAssistant && !isEditing && onRedo && onRedoWithNote && onEditSave && (
+          <MessageControls
+            onRedo={onRedo}
+            onRedoWithNote={onRedoWithNote}
+            onEdit={handleEditStart}
+            disabled={controlsDisabled ?? false}
+          />
+        )}
       </div>
     </div>
   );
@@ -243,6 +371,128 @@ function ComposerSendButton({
   );
 }
 
+type ToastState = { text: string; id: number; persistent: boolean };
+
+function Toast({ toast }: { toast: ToastState | null }) {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    setVisible(!!toast);
+  }, [toast]);
+
+  if (!toast) return null;
+
+  const isSuccess = !toast.persistent;
+
+  return (
+    <div
+      aria-live="polite"
+      className={[
+        "fixed bottom-20 left-1/2 z-50 -translate-x-1/2 transition-all duration-300",
+        visible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0",
+      ].join(" ")}
+    >
+      <div
+        className={[
+          "flex items-center gap-2 rounded-full border px-4 py-2 text-[12.5px] font-medium shadow-lg backdrop-blur-sm",
+          isSuccess
+            ? "border-[#5d8f22]/30 bg-[#76AD2B] text-white"
+            : "border-white/10 bg-[#2C2C2C]/85 text-white",
+        ].join(" ")}
+      >
+        {toast.persistent ? (
+          <span
+            className="inline-block h-3 w-3 rounded-full border-2 border-white/30 border-t-white"
+            style={{ animation: "animus-spin 0.8s linear infinite" }}
+            aria-hidden="true"
+          />
+        ) : (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+        )}
+        {toast.text}
+      </div>
+    </div>
+  );
+}
+
+function useToast() {
+  const [toast, setToast] = useState<ToastState | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (text: string, persistent = false) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    const id = Date.now();
+    setToast({ text, id, persistent });
+    if (!persistent) {
+      timerRef.current = setTimeout(() => setToast(null), 2800);
+    }
+  };
+
+  const dismissToast = () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setToast(null);
+  };
+
+  return { toast, showToast, dismissToast };
+}
+
+function RedoWithNoteDialog({
+  open,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: (note: string) => void;
+}) {
+  const [note, setNote] = useState("");
+
+  const handleConfirm = () => {
+    onConfirm(note.trim());
+    setNote("");
+  };
+
+  const handleClose = () => {
+    setNote("");
+    onClose();
+  };
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}
+    >
+      <div className="absolute inset-0 bg-[#2C2C2C]/30 backdrop-blur-sm" aria-hidden="true" />
+      <div className="relative z-10 w-full max-w-sm rounded-2xl border border-[#E8E0D0] bg-[#F5F0E8] p-5 shadow-xl">
+        <div className="mb-3 text-[14px] font-semibold text-[#2C2C2C]">Redo with note</div>
+        <p className="mb-3 text-[12.5px] leading-relaxed text-[#6B6B6B]">
+          Add a temporary instruction that will guide the regenerated response.
+        </p>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="e.g. Make it shorter and more playful…"
+          className="w-full rounded-xl border border-[#E8E0D0] bg-white px-3 py-2 text-[13.5px] leading-relaxed text-[#2C2C2C] placeholder:text-[#6B6B6B] focus:border-[#8B6F47] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8B6F47]/20 resize-none"
+          rows={3}
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleConfirm();
+            if (e.key === "Escape") handleClose();
+          }}
+        />
+        <div className="mt-3 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={handleClose}>Cancel</Button>
+          <Button size="sm" onClick={handleConfirm}>Redo</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ChatPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -252,11 +502,20 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [portraitCompact, setPortraitCompact] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const [redoWithNoteOpen, setRedoWithNoteOpen] = useState(false);
   const [initialMessages, setInitialMessages] = useState<Message[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { toast, showToast } = useToast();
 
-  const { messages, streamingText, isStreaming, sendMessage } =
-    useStreamingMessage(id || "", initialMessages);
+  const {
+    messages,
+    streamingText,
+    streamingMessageId,
+    isStreaming,
+    sendMessage,
+    redoMessage,
+    updateMessageContent,
+  } = useStreamingMessage(id || "", initialMessages);
 
   useEffect(() => {
     if (!id) {
@@ -284,6 +543,15 @@ export default function ChatPage() {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, streamingText]);
+
+  const prevStreamingMessageIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = prevStreamingMessageIdRef.current;
+    if (prev !== null && streamingMessageId === null) {
+      showToast("Response regenerated");
+    }
+    prevStreamingMessageIdRef.current = streamingMessageId;
+  }, [streamingMessageId]);
 
   if (loading) {
     return (
@@ -317,11 +585,33 @@ export default function ChatPage() {
           linear-gradient(180deg, #F5F0E8 0%, #ECE3D2 100%)`,
       };
 
+  const latestAssistantId =
+    [...messages].reverse().find((m) => m.role === "assistant")?.id ?? null;
+
   const handleSend = () => {
     const trimmed = input.trim();
     if (!trimmed || isStreaming) return;
     sendMessage(trimmed);
     setInput("");
+  };
+
+  const handleRedo = () => {
+    if (!latestAssistantId || isStreaming) return;
+    showToast("Regenerating…", true);
+    redoMessage(latestAssistantId);
+  };
+
+  const handleRedoWithNote = (note: string) => {
+    if (!latestAssistantId || isStreaming) return;
+    showToast("Regenerating…", true);
+    redoMessage(latestAssistantId, note || undefined);
+    setRedoWithNoteOpen(false);
+  };
+
+  const handleEditSave = async (messageId: string, content: string) => {
+    await editMessage(messageId, content);
+    updateMessageContent(messageId, content);
+    showToast("Message edited");
   };
 
   return (
@@ -333,7 +623,7 @@ export default function ChatPage() {
         color: "#2C2C2C",
       }}
     >
-      <style>{`@keyframes animus-blink { 50% { opacity: 0; } }`}</style>
+      <style>{`@keyframes animus-blink { 50% { opacity: 0; } } @keyframes animus-spin { to { transform: rotate(360deg); } }`}</style>
 
       <div
         className="pointer-events-none absolute inset-0"
@@ -461,16 +751,26 @@ export default function ChatPage() {
                   Today
                 </span>
               </div>
-              {messages.map((m) => (
-                <MessageRow
-                  key={m.id}
-                  message={m}
-                  isStreaming={false}
-                  personaHue={personaHue}
-                  personaName={persona.name}
-                />
-              ))}
-              {streamingText && (
+              {messages.map((m) => {
+                const isLatest = m.id === latestAssistantId && m.role === "assistant";
+                const isRedoing = m.id === streamingMessageId;
+                return (
+                  <MessageRow
+                    key={m.id}
+                    message={m}
+                    isStreaming={isRedoing}
+                    streamingContent={isRedoing ? streamingText : undefined}
+                    personaHue={personaHue}
+                    personaName={persona.name}
+                    isLatestAssistant={isLatest && !streamingMessageId}
+                    controlsDisabled={isStreaming}
+                    onRedo={isLatest ? handleRedo : undefined}
+                    onRedoWithNote={isLatest ? () => setRedoWithNoteOpen(true) : undefined}
+                    onEditSave={isLatest ? (content) => handleEditSave(m.id, content) : undefined}
+                  />
+                );
+              })}
+              {streamingText && !streamingMessageId && (
                 <MessageRow
                   message={{
                     id: "streaming",
@@ -538,6 +838,12 @@ export default function ChatPage() {
         conversationId={id || ""}
         personaName={persona.name}
       />
+      <RedoWithNoteDialog
+        open={redoWithNoteOpen}
+        onClose={() => setRedoWithNoteOpen(false)}
+        onConfirm={handleRedoWithNote}
+      />
+      <Toast toast={toast} />
     </div>
   );
 }

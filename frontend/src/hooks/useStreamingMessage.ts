@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { streamMessage } from "../lib/api";
+import { regenerateMessage, streamMessage } from "../lib/api";
 import type { Message } from "../types/api";
 
 interface UseStreamingMessageResult {
   messages: Message[];
   streamingText: string;
+  streamingMessageId: string | null;
   isStreaming: boolean;
   error: string | null;
   sendMessage: (content: string) => void;
+  redoMessage: (messageId: string, instructions?: string) => void;
+  updateMessageContent: (messageId: string, content: string) => void;
 }
 
 async function parseSSEStream(
@@ -77,6 +80,7 @@ export function useStreamingMessage(
 ): UseStreamingMessageResult {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [streamingText, setStreamingText] = useState("");
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hydrated = useRef(false);
@@ -143,5 +147,72 @@ export function useStreamingMessage(
     [conversationId],
   );
 
-  return { messages, streamingText, isStreaming, error, sendMessage };
+  const redoMessage = useCallback(
+    async (messageId: string, instructions?: string) => {
+      setError(null);
+      setStreamingText("");
+      setStreamingMessageId(messageId);
+      setIsStreaming(true);
+
+      let fullText = "";
+
+      try {
+        const res = await regenerateMessage(messageId, instructions);
+        if (!res.ok || !res.body) {
+          throw new Error(`${res.status}: ${res.statusText}`);
+        }
+
+        const reader = res.body.getReader();
+
+        await parseSSEStream(
+          reader,
+          (text) => {
+            fullText += text;
+            setStreamingText((prev) => prev + text);
+          },
+          () => {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === messageId ? { ...m, content: fullText } : m,
+              ),
+            );
+            setStreamingText("");
+            setStreamingMessageId(null);
+            setIsStreaming(false);
+          },
+          (errorMessage) => {
+            setError(errorMessage);
+            setStreamingMessageId(null);
+            setIsStreaming(false);
+          },
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        setError(message);
+        setStreamingMessageId(null);
+        setIsStreaming(false);
+      }
+    },
+    [],
+  );
+
+  const updateMessageContent = useCallback(
+    (messageId: string, content: string) => {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, content } : m)),
+      );
+    },
+    [],
+  );
+
+  return {
+    messages,
+    streamingText,
+    streamingMessageId,
+    isStreaming,
+    error,
+    sendMessage,
+    redoMessage,
+    updateMessageContent,
+  };
 }

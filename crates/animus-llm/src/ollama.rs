@@ -136,6 +136,7 @@ impl OllamaClient {
             let mut lines_stream = tokio_stream::wrappers::LinesStream::new(reader.lines());
             while let Some(line) = lines_stream.next().await {
                 let line = line.map_err(|e| OllamaError::Parse(e.to_string()))?;
+                tracing::trace!(target: "animus_llm::ollama", response_line = %line, "ollama stream line received");
                 let parsed = serde_json::from_str::<OllamaStreamResponse>(&line)
                     .map_err(|e| OllamaError::Parse(e.to_string()))?;
                 if parsed.done {
