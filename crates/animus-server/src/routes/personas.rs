@@ -1,3 +1,4 @@
+use crate::assets::{delete_persona_assets, parse_data_uri, save_persona_asset, AssetKind};
 use animus_core::{
     persona::{
         DEFAULT_INSTRUCTION_TEMPLATE, DEFAULT_REPEAT_PENALTY, DEFAULT_RESPONSE_LENGTH_LIMIT,
@@ -7,9 +8,10 @@ use animus_core::{
 };
 use animus_db::persona_repo::RepoError;
 use axum::{
+    body::Body,
     extract::{Path, Query, State},
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -26,6 +28,59 @@ pub fn router() -> Router<AppState> {
             "/api/personas/:id",
             get(get_persona).delete(remove_persona).patch(patch_persona),
         )
+        .route("/api/personas/:id/avatar", get(serve_persona_avatar))
+        .route("/api/personas/:id/background", get(serve_persona_background))
+}
+
+fn save_if_data_uri(
+    assets_dir: &std::path::Path,
+    persona_id: uuid::Uuid,
+    kind: AssetKind,
+    url: &str,
+) -> Result<Option<String>, ApiError> {
+    let Some((mime, bytes)) = parse_data_uri(url) else {
+        return Ok(None);
+    };
+    let stem = match kind {
+        AssetKind::Avatar => "avatar",
+        AssetKind::Background => "background",
+    };
+    save_persona_asset(assets_dir, persona_id, kind, &mime, &bytes).map_err(|_| ApiError::Internal)?;
+    Ok(Some(format!("/api/personas/{persona_id}/{stem}")))
+}
+
+async fn serve_asset_file(
+    assets_dir: &str,
+    persona_id: uuid::Uuid,
+    stem: &str,
+) -> Result<Response<Body>, ApiError> {
+    let base = std::path::Path::new(assets_dir).join(persona_id.to_string());
+    for (ext, mime) in [("png", "image/png"), ("jpg", "image/jpeg"), ("webp", "image/webp")] {
+        let path = base.join(format!("{stem}.{ext}"));
+        if path.exists() {
+            let bytes = tokio::fs::read(&path).await.map_err(|_| ApiError::Internal)?;
+            return Response::builder()
+                .status(StatusCode::OK)
+                .header("content-type", mime)
+                .body(Body::from(bytes))
+                .map_err(|_| ApiError::Internal);
+        }
+    }
+    Err(ApiError::NotFound)
+}
+
+async fn serve_persona_avatar(
+    State(state): State<AppState>,
+    Path(id): Path<uuid::Uuid>,
+) -> Result<impl IntoResponse, ApiError> {
+    serve_asset_file(&state.assets_dir, id, "avatar").await
+}
+
+async fn serve_persona_background(
+    State(state): State<AppState>,
+    Path(id): Path<uuid::Uuid>,
+) -> Result<impl IntoResponse, ApiError> {
+    serve_asset_file(&state.assets_dir, id, "background").await
 }
 
 // --- Import ---
@@ -171,7 +226,7 @@ async fn create_persona(
         return Err(ApiError::UnprocessableEntity("name is required".to_owned()));
     }
 
-    let persona = Persona {
+    let mut persona = Persona {
         id: Uuid::now_v7(),
         name: req.name,
         description: req.description,
@@ -194,6 +249,20 @@ async fn create_persona(
         repeat_penalty: req.repeat_penalty,
         instruction_template: req.instruction_template,
     };
+
+    let assets_dir = std::path::Path::new(&state.assets_dir);
+    if let Some(url) = persona.avatar_url.clone() {
+        if let Some(new_url) = save_if_data_uri(assets_dir, persona.id, AssetKind::Avatar, &url)? {
+            persona.avatar_url = Some(new_url);
+        }
+    }
+    if let Some(url) = persona.background_url.clone() {
+        if let Some(new_url) =
+            save_if_data_uri(assets_dir, persona.id, AssetKind::Background, &url)?
+        {
+            persona.background_url = Some(new_url);
+        }
+    }
 
     state.personas.insert(&persona).await.map_err(|e| match e {
         RepoError::Duplicate => {
@@ -252,6 +321,21 @@ async fn patch_persona(
     persona.model = req.model;
     persona.avatar_url = req.avatar_url;
     persona.background_url = req.background_url;
+
+    let assets_dir = std::path::Path::new(&state.assets_dir);
+    if let Some(url) = persona.avatar_url.clone() {
+        if let Some(new_url) = save_if_data_uri(assets_dir, persona.id, AssetKind::Avatar, &url)? {
+            persona.avatar_url = Some(new_url);
+        }
+    }
+    if let Some(url) = persona.background_url.clone() {
+        if let Some(new_url) =
+            save_if_data_uri(assets_dir, persona.id, AssetKind::Background, &url)?
+        {
+            persona.background_url = Some(new_url);
+        }
+    }
+
     persona.model_instructions = req.model_instructions;
     persona.appearance = req.appearance;
     persona.speech_style = req.speech_style;
@@ -327,6 +411,11 @@ async fn remove_persona(
         .map_err(|_| ApiError::Internal)?;
 
     if found {
+        if let Err(e) =
+            delete_persona_assets(std::path::Path::new(&state.assets_dir), id)
+        {
+            tracing::warn!(persona_id = %id, error = %e, "failed to delete persona assets");
+        }
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
@@ -401,6 +490,10 @@ mod tests {
     static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../animus-db/migrations");
 
     fn make_app(pool: SqlitePool) -> Router {
+        make_app_with_dirs(pool, "/tmp/assets")
+    }
+
+    fn make_app_with_dirs(pool: SqlitePool, assets_dir: &str) -> Router {
         let state = AppState {
             personas: PersonaRepo::new(pool.clone()),
             conversations: ConversationRepo::new(pool.clone()),
@@ -410,7 +503,7 @@ mod tests {
             ollama: OllamaClient::new("http://localhost:11434"),
             model_name: "gemma4".to_owned(),
             ollama_url: "http://localhost:11434".to_owned(),
-            assets_dir: "/tmp/assets".to_owned(),
+            assets_dir: assets_dir.to_owned(),
             backups_dir: "/tmp/backups".to_owned(),
         };
         router().with_state(state)
@@ -1034,6 +1127,95 @@ mod tests {
             .unwrap();
         assert_eq!(res.status(), StatusCode::CREATED);
         let body = body_json(res).await;
+        // invalid base64 → parse fails → original URL kept
         assert_eq!(body["avatar_url"], "data:image/png;base64,abc123");
+    }
+
+    // 1×1 transparent PNG
+    const TINY_PNG_B64: &str =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn create_valid_data_uri_stores_api_url(pool: SqlitePool) {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let app = make_app_with_dirs(pool, tmp.path().to_str().unwrap());
+        let body = serde_json::json!({
+            "name": "WithRealAvatar",
+            "avatar_url": format!("data:image/png;base64,{TINY_PNG_B64}"),
+        })
+        .to_string();
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/personas")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::CREATED);
+        let body = body_json(res).await;
+        let url = body["avatar_url"].as_str().unwrap();
+        assert!(url.starts_with("/api/personas/"));
+        assert!(url.ends_with("/avatar"));
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn serve_avatar_returns_image_bytes(pool: SqlitePool) {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let assets_dir = tmp.path().to_str().unwrap();
+        let app = make_app_with_dirs(pool, assets_dir);
+
+        // Create persona with valid avatar
+        let create_body = serde_json::json!({
+            "name": "ServeTest",
+            "avatar_url": format!("data:image/png;base64,{TINY_PNG_B64}"),
+        })
+        .to_string();
+        let create_res = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/personas")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(create_body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(create_res.status(), StatusCode::CREATED);
+        let created = body_json(create_res).await;
+        let avatar_url = created["avatar_url"].as_str().unwrap().to_owned();
+
+        // Serve it back
+        let serve_res = app
+            .oneshot(
+                Request::builder()
+                    .uri(&avatar_url)
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(serve_res.status(), StatusCode::OK);
+        assert_eq!(serve_res.headers()["content-type"], "image/png");
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn serve_avatar_returns_404_when_no_file(pool: SqlitePool) {
+        let app = make_app(pool);
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/personas/{}/avatar", uuid::Uuid::now_v7()))
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
     }
 }
