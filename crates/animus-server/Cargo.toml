@@ -8,6 +8,7 @@ animus-core = { path = "../animus-core" }
 animus-db = { path = "../animus-db" }
 animus-llm = { path = "../animus-llm" }
 axum = { version = "0.7" }
+base64 = "0.22.1"
 dotenvy = "0.15"
 serde = { workspace = true }
 serde_json = { workspace = true }

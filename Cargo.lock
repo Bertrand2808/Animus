@@ -69,6 +69,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "axum",
+ "base64",
  "dirs",
  "dotenvy",
  "futures",

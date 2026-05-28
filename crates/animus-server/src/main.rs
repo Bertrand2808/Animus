@@ -52,6 +52,8 @@ async fn main() -> anyhow::Result<()> {
 
     let assets_dir = home.join(".animus/assets").to_string_lossy().into_owned();
     let backups_dir = home.join(".animus/backups").to_string_lossy().into_owned();
+    std::fs::create_dir_all(&assets_dir).context("failed to create assets directory")?;
+    std::fs::create_dir_all(&backups_dir).context("failed to create backups directory")?;
 
     let settings_repo = SettingsRepo::new(pool.clone());
     settings_repo
